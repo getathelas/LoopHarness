@@ -45,6 +45,16 @@ final class FireworksChat {
 
     private let endpoint = URL(string: "https://api.fireworks.ai/inference/v1/chat/completions")!
 
+    // MARK: - Prompt caching
+    //
+    // Fireworks supports automatic prefix caching on their OpenAI-
+    // compatible endpoint. Like OpenAI, no explicit request parameter
+    // is needed — the server detects repeated prefixes and serves them
+    // from KV cache. To maximize hit rate we rely on the same ordering
+    // invariant the harness already maintains: system → tools → history
+    // → latest user message. Fireworks does not currently expose a
+    // response field reporting cache hits, so we log latency only.
+
     private let maxCompletionTokens = 4096
 
     func chat(messages: [MessageStruct],

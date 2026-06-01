@@ -52,6 +52,19 @@ final class OpenAIChat {
 
     private let endpoint = URL(string: "https://api.openai.com/v1/chat/completions")!
 
+    // MARK: - Prompt caching
+    //
+    // OpenAI applies automatic prefix caching for prompts ≥1024 tokens
+    // when the prefix is identical across requests. No explicit API
+    // parameter is required. To maximize cache hit rate:
+    //   1. System message (stable) comes first.
+    //   2. Tool schemas (stable) are sent in a consistent order.
+    //   3. Dynamic/volatile content (user turns, timestamps) comes last.
+    // The harness already composes messages in this order (system →
+    // history → user), so we just need to keep that invariant and not
+    // shuffle tools between requests. Cache hits are reported in
+    // `usage.prompt_tokens_details.cached_tokens`.
+
     /// Maps `[MessageStruct]` → OpenAI chat messages, sends the
     /// (already OpenAI-shaped) tool schemas, and parses the reply back into a
     /// `MessageStruct` — emitting a `FunctionCallStruct` when the model wants
