@@ -133,18 +133,20 @@ final class OpenAIChat {
         metrics.willSendRequest()
 
         let reader = SSEStreamReader(metrics: metrics, onDelta: onPartial) { result in
-            switch result {
-            case .success(let r):
-                let msg = MessageStruct(
-                    role: "assistant",
-                    content: r.content,
-                    model: ModelSelectionStore.current.stampedMessageModel,
-                    functions: r.toolCalls,
-                    reasoningContent: r.reasoningContent,
-                    tokenUsage: r.usage)
-                completion(msg, nil)
-            case .failure(let error):
-                completion(nil, Self.error("OpenAI streaming error: \(error.localizedDescription)"))
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let r):
+                    let msg = MessageStruct(
+                        role: "assistant",
+                        content: r.content,
+                        model: ModelSelectionStore.current.stampedMessageModel,
+                        functions: r.toolCalls,
+                        reasoningContent: r.reasoningContent,
+                        tokenUsage: r.usage)
+                    completion(msg, nil)
+                case .failure(let error):
+                    completion(nil, Self.error("OpenAI streaming error: \(error.localizedDescription)"))
+                }
             }
         }
 

@@ -7,6 +7,12 @@
 //  content_block_delta, content_block_stop, message_delta, message_stop)
 //  rather than OpenAI's flat `data:` chunks.
 //
+//  Handles all current content-block types (text, tool_use, thinking,
+//  signature) so extended-thinking Opus responses don't crash. A
+//  `didFinish` flag prevents double-delivery of the completion handler
+//  when an HTTP error triggers both `didReceive response:` and
+//  `didCompleteWithError:`.
+//
 
 import Foundation
 
@@ -27,6 +33,8 @@ final class AnthropicStreamReader: NSObject, URLSessionDataDelegate {
     private var contentBuffer = ""
     private var inputTokens: Int = 0
     private var outputTokens: Int = 0
+    private var cacheReadTokens: Int = 0
+    private var cacheCreationTokens: Int = 0
 
     /// Each content block has an index; tool_use blocks accumulate name, id,
     /// and a JSON-arguments string across deltas.
@@ -43,12 +51,26 @@ final class AnthropicStreamReader: NSObject, URLSessionDataDelegate {
     private var currentEventType = ""
     private var receivedFirstChunk = false
 
+    /// Guard against delivering the completion handler more than once.
+    /// When the HTTP status is >= 400 the reader calls `completion` in
+    /// `didReceive response:` and cancels the task; the subsequent
+    /// `didCompleteWithError:` would otherwise deliver a second (spurious)
+    /// cancellation error.
+    private var didFinish = false
+
     init(metrics: InferenceMetrics,
          onDelta: ((String) -> Void)? = nil,
          completion: @escaping (Swift.Result<Result, Error>) -> Void) {
         self.metrics = metrics
         self.onDelta = onDelta
         self.completion = completion
+    }
+
+    /// Deliver the result exactly once.
+    private func finish(_ result: Swift.Result<Result, Error>) {
+        guard !didFinish else { return }
+        didFinish = true
+        completion(result)
     }
 
     // MARK: - URLSessionDataDelegate
@@ -59,7 +81,7 @@ final class AnthropicStreamReader: NSObject, URLSessionDataDelegate {
                     completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
         if let http = response as? HTTPURLResponse, http.statusCode >= 400 {
             completionHandler(.cancel)
-            completion(.failure(NSError(
+            finish(.failure(NSError(
                 domain: "AnthropicStreamReader",
                 code: http.statusCode,
                 userInfo: [NSLocalizedDescriptionKey: "HTTP \(http.statusCode) from Anthropic"])))
@@ -90,7 +112,7 @@ final class AnthropicStreamReader: NSObject, URLSessionDataDelegate {
                     task: URLSessionTask,
                     didCompleteWithError error: Error?) {
         if let error = error {
-            completion(.failure(error))
+            finish(.failure(error))
             return
         }
         if !lineBuffer.isEmpty {
@@ -120,9 +142,16 @@ final class AnthropicStreamReader: NSObject, URLSessionDataDelegate {
         switch currentEventType {
         case "message_start":
             if let msg = json["message"] as? [String: Any],
-               let u = msg["usage"] as? [String: Any],
-               let input = u["input_tokens"] as? Int {
-                inputTokens = input
+               let u = msg["usage"] as? [String: Any] {
+                if let input = u["input_tokens"] as? Int {
+                    inputTokens = input
+                }
+                if let cr = u["cache_read_input_tokens"] as? Int {
+                    cacheReadTokens = cr
+                }
+                if let cc = u["cache_creation_input_tokens"] as? Int {
+                    cacheCreationTokens = cc
+                }
             }
 
         case "content_block_start":
@@ -136,18 +165,31 @@ final class AnthropicStreamReader: NSObject, URLSessionDataDelegate {
                 if let name = block["name"] as? String { acc.name = name }
                 toolUseBlocks[idx] = acc
             }
+            // `thinking` and `signature` blocks are tracked in blockTypes
+            // so their deltas route through the correct branch below.
 
         case "content_block_delta":
             guard let idx = json["index"] as? Int,
                   let delta = json["delta"] as? [String: Any],
                   let deltaType = delta["type"] as? String else { return }
 
-            if deltaType == "text_delta", let text = delta["text"] as? String {
-                contentBuffer += text
-                onDelta?(text)
-            } else if deltaType == "input_json_delta",
-                      let partial = delta["partial_json"] as? String {
-                toolUseBlocks[idx]?.inputJSON += partial
+            switch deltaType {
+            case "text_delta":
+                if let text = delta["text"] as? String {
+                    contentBuffer += text
+                    onDelta?(text)
+                }
+            case "input_json_delta":
+                if let partial = delta["partial_json"] as? String {
+                    toolUseBlocks[idx]?.inputJSON += partial
+                }
+            case "thinking_delta", "signature_delta":
+                // Extended-thinking / response-signature deltas are
+                // acknowledged but not surfaced to the user. Logging
+                // them aids debugging without crashing.
+                break
+            default:
+                print("[AnthropicStreamReader] unhandled delta type: \(deltaType)")
             }
 
         case "message_delta":
@@ -155,6 +197,22 @@ final class AnthropicStreamReader: NSObject, URLSessionDataDelegate {
                let output = u["output_tokens"] as? Int {
                 outputTokens = output
             }
+
+        case "error":
+            // Anthropic may send an `error` event mid-stream (e.g.
+            // overloaded_error). Surface it rather than silently
+            // producing a partial/empty response.
+            let message: String
+            if let err = json["error"] as? [String: Any],
+               let msg = err["message"] as? String {
+                message = msg
+            } else {
+                message = "Unknown streaming error from Anthropic"
+            }
+            finish(.failure(NSError(
+                domain: "AnthropicStreamReader",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: message])))
 
         default:
             break
@@ -184,9 +242,10 @@ final class AnthropicStreamReader: NSObject, URLSessionDataDelegate {
                                completionTokens: outputTokens,
                                totalTokens: inputTokens + outputTokens)
         }
-        metrics.didComplete(usage: usage)
+        let cached = (cacheReadTokens > 0) ? cacheReadTokens : nil
+        metrics.didComplete(usage: usage, cachedTokens: cached)
 
-        completion(.success(Result(
+        finish(.success(Result(
             content: contentBuffer,
             toolCalls: calls,
             usage: usage)))

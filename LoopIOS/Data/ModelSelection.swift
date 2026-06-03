@@ -90,6 +90,7 @@ enum ModelSelection: String, CaseIterable {
     case gpt4o = "gpt4o"
 
     // Anthropic / Claude.
+    case claudeOpus48   = "claudeOpus48"
     case claudeOpus47   = "claudeOpus47"
     case claudeSonnet46 = "claudeSonnet46"
     case claudeHaiku45  = "claudeHaiku45"
@@ -103,7 +104,7 @@ enum ModelSelection: String, CaseIterable {
             return .apple
         case .gpt55, .gpt51, .gpt41, .gpt4o:
             return .openAI
-        case .claudeOpus47, .claudeSonnet46, .claudeHaiku45:
+        case .claudeOpus48, .claudeOpus47, .claudeSonnet46, .claudeHaiku45:
             return .anthropic
         case .fireworksKimiK26:
             return .fireworks
@@ -118,6 +119,7 @@ enum ModelSelection: String, CaseIterable {
         case .gpt51:           return "GPT-5.1"
         case .gpt41:           return "GPT-4.1"
         case .gpt4o:           return "GPT-4o"
+        case .claudeOpus48:    return "Claude Opus 4.8"
         case .claudeOpus47:    return "Claude Opus 4.7"
         case .claudeSonnet46:  return "Claude Sonnet 4.6"
         case .claudeHaiku45:   return "Claude Haiku 4.5"
@@ -136,6 +138,7 @@ enum ModelSelection: String, CaseIterable {
         case .gpt51:           return "gpt-5.1"
         case .gpt41:           return "gpt-4.1"
         case .gpt4o:           return "gpt-4o"
+        case .claudeOpus48:    return "claude-opus-4-8"
         case .claudeOpus47:    return "claude-opus-4-7"
         case .claudeSonnet46:  return "claude-sonnet-4-6"
         case .claudeHaiku45:   return "claude-haiku-4-5-20251001"
@@ -162,6 +165,7 @@ enum ModelSelection: String, CaseIterable {
         case .gpt51:            return 1_048_576
         case .gpt41:            return 1_048_576
         case .gpt4o:            return 128_000
+        case .claudeOpus48:     return 1_000_000
         case .claudeOpus47:     return 200_000
         case .claudeSonnet46:   return 200_000
         case .claudeHaiku45:    return 200_000

@@ -63,12 +63,26 @@ final class SSEStreamReader: NSObject, URLSessionDataDelegate {
 
     private var receivedFirstChunk = false
 
+    /// Guard against delivering the completion handler more than once.
+    /// Same pattern as `AnthropicStreamReader.didFinish` — an HTTP-error
+    /// cancel triggers both `didReceive response:` and
+    /// `didCompleteWithError:`, and without this flag both would call
+    /// `completion`.
+    private var didFinish = false
+
     init(metrics: InferenceMetrics,
          onDelta: ((String) -> Void)? = nil,
          completion: @escaping (Swift.Result<Result, Error>) -> Void) {
         self.metrics = metrics
         self.onDelta = onDelta
         self.completion = completion
+    }
+
+    /// Deliver the result exactly once.
+    private func finish(_ result: Swift.Result<Result, Error>) {
+        guard !didFinish else { return }
+        didFinish = true
+        completion(result)
     }
 
     // MARK: - URLSessionDataDelegate
@@ -82,7 +96,7 @@ final class SSEStreamReader: NSObject, URLSessionDataDelegate {
             let code = http.statusCode
             // We'll get the error body in didCompleteWithError or via a
             // subsequent data callback; for now just note the status.
-            completion(.failure(NSError(
+            finish(.failure(NSError(
                 domain: "SSEStreamReader",
                 code: code,
                 userInfo: [NSLocalizedDescriptionKey: "HTTP \(code) from provider"])))
@@ -114,7 +128,7 @@ final class SSEStreamReader: NSObject, URLSessionDataDelegate {
                     task: URLSessionTask,
                     didCompleteWithError error: Error?) {
         if let error = error {
-            completion(.failure(error))
+            finish(.failure(error))
             return
         }
         // Process any remaining partial line.
@@ -210,6 +224,6 @@ final class SSEStreamReader: NSObject, URLSessionDataDelegate {
             reasoningContent: reasoningBuffer.isEmpty ? nil : reasoningBuffer,
             usage: usage,
             cachedTokens: cachedTokens)
-        completion(.success(result))
+        finish(.success(result))
     }
 }

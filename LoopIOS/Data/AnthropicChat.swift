@@ -132,17 +132,22 @@ final class AnthropicChat {
         metrics.willSendRequest()
 
         let reader = AnthropicStreamReader(metrics: metrics, onDelta: onPartial) { result in
-            switch result {
-            case .success(let r):
-                let msg = MessageStruct(
-                    role: "assistant",
-                    content: r.content,
-                    model: ModelSelectionStore.current.stampedMessageModel,
-                    functions: r.toolCalls,
-                    tokenUsage: r.usage)
-                completion(msg, nil)
-            case .failure(let error):
-                completion(nil, Self.error("Anthropic streaming error: \(error.localizedDescription)"))
+            // The reader fires on URLSession's delegate queue. Hop to main
+            // so the caller (MessagingVC / AgentHarness) never touches
+            // UIKit state from a background thread.
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let r):
+                    let msg = MessageStruct(
+                        role: "assistant",
+                        content: r.content,
+                        model: ModelSelectionStore.current.stampedMessageModel,
+                        functions: r.toolCalls,
+                        tokenUsage: r.usage)
+                    completion(msg, nil)
+                case .failure(let error):
+                    completion(nil, Self.error("Anthropic streaming error: \(error.localizedDescription)"))
+                }
             }
         }
 
