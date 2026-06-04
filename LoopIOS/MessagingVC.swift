@@ -180,6 +180,9 @@ When the user asks how you work, what you can do, or how you're built, read `ABO
     // falls back to AVSpeechSynthesizer when missing or on connection failure.
     private var deepgramTTS: DeepgramTTS?
 
+    // Piper on-device neural TTS. Used when the user selects the Piper provider.
+    private var piperTTSEngine: PiperTTSEngine?
+
     // Offline TTS — used when the device has no network. AVSpeechSynthesizer runs
     // on-device and never needs to reach any backend.
     private let offlineSynthesizer = AVSpeechSynthesizer()
@@ -1590,6 +1593,10 @@ extension MessagingVC: MessageBoxDelegate {
         case .openAIMiniTTS:
             took = Self.isKeyConfigured(MessagingVC.openAIAPIKey)
                 && beginOpenAISpeak(text: cleanContent, messageId: message.id)
+        case .piper:
+            // Piper runs fully on-device — no API key needed.
+            beginPiperSpeak(text: cleanContent, messageId: message.id)
+            return
         case .system:
             // User explicitly chose offline TTS — skip any network providers.
             speakOffline(text: cleanContent, messageId: message.id)
@@ -1664,6 +1671,8 @@ extension MessagingVC: MessageBoxDelegate {
         audioPlayer = nil
         deepgramTTS?.stop()
         deepgramTTS = nil
+        piperTTSEngine?.stop()
+        piperTTSEngine = nil
         if offlineSynthesizer.isSpeaking || offlineSynthesizer.isPaused {
             offlineSynthesizer.stopSpeaking(at: .immediate)
         }
@@ -1722,7 +1731,96 @@ extension MessagingVC: MessageBoxDelegate {
         VoiceLoopCoordinator.shared.setState(.speaking)
         print("Offline TTS: speaking message \(messageId) with voice \(voice?.name ?? "system default") at \(speechSpeed.label)")
     }
-    
+
+    /// Speak `text` using Piper on-device neural TTS. Downloads the model
+    /// on first use, then runs ONNX inference locally — no network needed
+    /// once the model is cached.
+    private func beginPiperSpeak(text: String, messageId: String) {
+        if isMuted {
+            VoiceLoopCoordinator.shared.setState(.idle)
+            return
+        }
+
+        let voiceId = selectedVoiceId(for: .piper)
+        guard !voiceId.isEmpty else {
+            print("PiperTTS: no voice selected — falling back to offline")
+            speakOffline(text: text, messageId: messageId)
+            return
+        }
+
+        // If the model isn't downloaded yet, kick off the download and fall
+        // back to AVSpeechSynthesizer for this turn. The next turn will use
+        // Piper once the download completes.
+        if !PiperModelManager.shared.isDownloaded(voiceId) {
+            print("PiperTTS: model \(voiceId) not downloaded — downloading and falling back")
+            PiperModelManager.shared.download(voiceId: voiceId) { result in
+                switch result {
+                case .success:
+                    print("PiperTTS: model \(voiceId) downloaded — will use next time")
+                case .failure(let err):
+                    print("PiperTTS: download failed — \(err.localizedDescription)")
+                }
+            }
+            speakOffline(text: text, messageId: messageId)
+            return
+        }
+
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            print("PiperTTS: audio session setup failed (\(error)) — falling back")
+            speakOffline(text: text, messageId: messageId)
+            return
+        }
+
+        let engine = PiperTTSEngine(voiceId: voiceId, speed: speechSpeed.deepgramRate)
+
+        engine.onFirstAudio = { [weak self] in
+            DispatchQueue.main.async {
+                self?.markAudioReady(forMessageId: messageId)
+                guard self?.currentSpeechMessageId == messageId else { return }
+                VoiceLoopCoordinator.shared.setState(.speaking)
+            }
+        }
+
+        engine.onError = { [weak self] err in
+            print("PiperTTS error: \(err.localizedDescription)")
+            DispatchQueue.main.async {
+                guard let self = self, self.currentSpeechMessageId == messageId else { return }
+                self.piperTTSEngine = nil
+                self.speakOffline(text: text, messageId: messageId)
+            }
+        }
+
+        engine.onFinished = { [weak self] in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if self.currentSpeechMessageId == messageId {
+                    self.currentSpeechMessageId = nil
+                    self.speechBuffer = ""
+                }
+                self.piperTTSEngine = nil
+                VoiceLoopCoordinator.shared.setState(.idle)
+            }
+        }
+
+        engine.onOutputAmplitude = { [weak self] amp in
+            guard let self = self, self.currentSpeechMessageId == messageId else { return }
+            VoiceLoopCoordinator.shared.publishOutputAmplitude(amp)
+        }
+
+        guard engine.start() else {
+            print("PiperTTS: engine start failed — falling back")
+            speakOffline(text: text, messageId: messageId)
+            return
+        }
+
+        self.piperTTSEngine = engine
+        engine.speak(text: text)
+        print("PiperTTS: speaking message \(messageId) with voice \(voiceId)")
+    }
+
     private func scrollToLastMessage() {
         if self.visible_messages.count > 0 {
             let lastIndex = IndexPath(row: self.visible_messages.count - 1, section: 0)
@@ -1895,6 +1993,29 @@ extension MessagingVC {
                 title: "Voice",
                 image: UIImage(systemName: "person.wave.2"),
                 children: voiceActions
+            )
+
+        case .piper:
+            let currentId = selectedVoiceId(for: .piper)
+            let manager = PiperModelManager.shared
+            let actions: [UIAction] = manager.availableVoices.map { voice in
+                let downloaded = manager.isDownloaded(voice.id)
+                let subtitle = downloaded
+                    ? "\(voice.quality.rawValue.capitalized) quality"
+                    : "Not downloaded — will download on first use"
+                return UIAction(
+                    title: voice.displayName,
+                    subtitle: subtitle,
+                    state: voice.id == currentId ? .on : .off
+                ) { [weak self] _ in
+                    self?.setSelectedVoiceId(voice.id, for: .piper)
+                }
+            }
+            let currentLabel = manager.descriptor(for: currentId)?.displayName ?? currentId
+            return UIMenu(
+                title: "Voice — \(currentLabel)",
+                image: UIImage(systemName: "person.wave.2"),
+                children: actions
             )
 
         case .aura2, .elevenLabsV3, .elevenLabsFlashV25, .openAIMiniTTS:

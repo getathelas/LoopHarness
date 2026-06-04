@@ -200,6 +200,9 @@ extension ModelPickerVC: UITableViewDataSource, UITableViewDelegate {
                 ? "Uses your \(key.displayName)"
                 : "Needs your \(key.displayName) — add it in Settings ▸ Keys"
         }
+        if tts == .piper {
+            return "Neural TTS via ONNX. On-device, no network or API key. Downloads voice model on first use."
+        }
         return "On-device. No network, no API key."
     }
 

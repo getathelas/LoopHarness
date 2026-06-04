@@ -94,6 +94,7 @@ enum TTSProvider: String, CaseIterable {
     case elevenLabsV3       = "elevenLabsV3"       // ElevenLabs Eleven v3 — most expressive, ~600ms-1s TTFB
     case elevenLabsFlashV25 = "elevenLabsFlashV25" // ElevenLabs Flash v2.5 — low-latency (~75ms model TTFB), less expressive than v3
     case openAIMiniTTS      = "openAIMiniTTS"      // OpenAI gpt-4o-mini-tts — steerable via instructions
+    case piper              = "piper"              // Piper neural TTS — fast, on-device ONNX inference, no network
     case system             = "system"             // On-device AVSpeechSynthesizer (no network)
 
     /// Human-readable name shown in the speaker menu.
@@ -103,6 +104,7 @@ enum TTSProvider: String, CaseIterable {
         case .elevenLabsV3:       return "ElevenLabs v3"
         case .elevenLabsFlashV25: return "ElevenLabs Flash v2.5"
         case .openAIMiniTTS:      return "OpenAI gpt-4o-mini-tts"
+        case .piper:              return "Piper (Offline)"
         case .system:             return "On-device (offline)"
         }
     }
@@ -134,6 +136,8 @@ enum TTSProvider: String, CaseIterable {
             return ["alloy", "echo", "fable", "onyx", "nova",
                     "shimmer", "coral", "sage", "ash", "ballad", "verse"]
                 .map { ($0.capitalized, $0) }
+        case .piper:
+            return PiperModelManager.shared.availableVoices.map { ($0.displayName, $0.id) }
         case .system:
             return []
         }
@@ -146,6 +150,7 @@ enum TTSProvider: String, CaseIterable {
         case .elevenLabsV3:       return "21m00Tcm4TlvDq8ikWAM"
         case .elevenLabsFlashV25: return "21m00Tcm4TlvDq8ikWAM"
         case .openAIMiniTTS:      return "shimmer"
+        case .piper:              return PiperModelManager.shared.defaultVoiceId
         case .system:             return ""
         }
     }
@@ -178,7 +183,7 @@ enum TTSProviderStore {
         case .aura2:                                  return .deepgram
         case .elevenLabsV3, .elevenLabsFlashV25:      return .elevenLabs
         case .openAIMiniTTS:                          return .openAI
-        case .system:                                 return nil
+        case .piper, .system:                         return nil
         }
     }
 }

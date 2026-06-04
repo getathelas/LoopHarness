@@ -42,6 +42,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // happen before didFinishLaunchingWithOptions returns.
         LoopRunnerPoller.shared.bootstrap()
 
+        // If the user has Piper selected as TTS, start downloading the
+        // default voice model in the background so the first speak attempt
+        // doesn't stall.
+        if TTSProviderStore.current == .piper {
+            PiperModelManager.shared.preloadDefaultIfNeeded()
+        }
+
         return true
     }
 
