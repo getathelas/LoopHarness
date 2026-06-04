@@ -324,6 +324,19 @@ When the user asks how you work, what you can do, or how you're built, read `ABO
     /// full history.
     var chatContextMessages: [MessageStruct] {
         let filtered = self.messages.filter { $0.onboardingCard == nil }
+            .map { msg -> MessageStruct in
+                // For assistant messages with a selected alternate, swap in
+                // the selected variant's content so the LLM sees a
+                // deterministic context regardless of which card the user
+                // swiped to.
+                guard msg.role == "assistant",
+                      let idx = msg.selectedAlternateIndex,
+                      idx > 0, idx <= msg.alternates.count else { return msg }
+                var copy = msg
+                copy.content = msg.alternates[idx - 1].content
+                copy.model = msg.alternates[idx - 1].model
+                return copy
+            }
         guard let convId = currentConversationEntity?.id else { return filtered }
         return ContextCompactor.compactedMessages(all: filtered, conversationId: convId)
     }
@@ -2319,6 +2332,7 @@ extension MessagingVC: UITableViewDelegate, UITableViewDataSource {
         cell.imageDelegate = self
         cell.pdfDelegate = self
         cell.onboardingDelegate = self
+        cell.variantDelegate = self
         cell.setData(data: message, shouldAnimate: message.id == self.messageIdToAnimate)
         if message.id == self.messageIdToAnimate {
             self.messageIdToAnimate = nil
@@ -2397,6 +2411,17 @@ extension MessagingVC: UITableViewDelegate, UITableViewDataSource {
             }
             actions.append(branchAction)
 
+            // Regenerate with a different model — assistant messages only.
+            if message.role == "assistant" && !message.content.isEmpty {
+                let regenerateAction = UIAction(
+                    title: "Regenerate",
+                    image: UIImage(systemName: "arrow.triangle.2.circlepath")
+                ) { [weak self] _ in
+                    self?.presentRegenerateModelPicker(forVisibleIndex: indexPath.row)
+                }
+                actions.append(regenerateAction)
+            }
+
             if self?.messageHasReplayableAudio(message) == true {
                 let replayAction = UIAction(
                     title: "Replay Audio",
@@ -2432,6 +2457,156 @@ extension MessagingVC: UITableViewDelegate, UITableViewDataSource {
         return !cleaned.isEmpty
     }
 
+    // MARK: - Regenerate with alternate model
+
+    /// Present the model picker as an action sheet so the user can choose
+    /// which model to regenerate with.
+    private func presentRegenerateModelPicker(forVisibleIndex visibleIndex: Int) {
+        guard visibleIndex < visible_messages.count else { return }
+        let message = visible_messages[visibleIndex]
+        guard message.role == "assistant" else { return }
+
+        let alert = UIAlertController(title: "Regenerate with…",
+                                      message: "Choose a model to generate an alternate response.",
+                                      preferredStyle: .actionSheet)
+
+        // Build one action per available model, grouping by provider.
+        for provider in ModelProvider.allCases {
+            // Skip Apple on-device when unavailable.
+            if provider == .apple && !ModelProvider.isAppleFoundationAvailable { continue }
+            let models = ModelSelection.models(for: provider)
+            if models.isEmpty { continue }
+            // Only show models whose API key is configured (or Apple which
+            // needs no key).
+            let keyed = models.filter { model in
+                guard let key = model.requiredKey else { return true }
+                return KeyStore.shared.source(for: key) != .missing
+            }
+            for model in keyed {
+                let action = UIAlertAction(title: model.displayName, style: .default) { [weak self] _ in
+                    self?.regenerateMessage(atVisibleIndex: visibleIndex, withModel: model)
+                }
+                alert.addAction(action)
+            }
+        }
+
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        // iPad popover anchor — use the tapped cell.
+        if let pop = alert.popoverPresentationController {
+            let ip = IndexPath(row: visibleIndex, section: 0)
+            if let cell = tableView.cellForRow(at: ip) {
+                pop.sourceView = cell
+                pop.sourceRect = cell.bounds
+            }
+        }
+        present(alert, animated: true)
+    }
+
+    /// Kick off the LLM call for a regenerated alternate. The context is
+    /// everything in the conversation UP TO (but not including) the original
+    /// assistant message, exactly matching what produced the original
+    /// response.
+    private func regenerateMessage(atVisibleIndex visibleIndex: Int, withModel model: ModelSelection) {
+        guard visibleIndex < visible_messages.count else { return }
+        let originalMessage = visible_messages[visibleIndex]
+        guard originalMessage.role == "assistant" else { return }
+        guard let fullIndex = messages.firstIndex(where: { $0.id == originalMessage.id }) else { return }
+
+        // Build context: all messages before the original assistant response.
+        let contextMessages = Array(messages[0..<fullIndex])
+
+        // Show a loading state on the message cell.
+        let newAlternateIndex = originalMessage.alternates.count + 1
+        var updatedMessage = originalMessage
+        // Add a placeholder alternate that will be filled when the response arrives.
+        updatedMessage.alternates.append(
+            MessageAlternate(content: "", model: model.stampedMessageModel)
+        )
+        updatedMessage.selectedAlternateIndex = newAlternateIndex
+        messages[fullIndex] = updatedMessage
+
+        // Set thinking state and reload.
+        self.ai_state = .Thinking(text: "Regenerating with \(model.displayName)…")
+        DispatchQueue.main.async {
+            self.tableView.reloadData()
+            self.scrollToMessage(atVisibleIndex: visibleIndex)
+        }
+
+        // Save the previous model selection and temporarily override it.
+        let previousModel = ModelSelectionStore.current
+        ModelSelectionStore.current = model
+
+        // Build chat messages using the original context with the composed
+        // system prompt, exactly as a normal turn does.
+        let toolsToSend = AgentHarness.uniqueToolSchemas(AgentHarness.shared.toolSchemas)
+        let baseInstructions = contextMessages.first(where: { $0.role == "system" })?.content ?? ""
+        let composedSystem = AgentHarness.shared.buildSystemPrompt(base: baseInstructions)
+        var rebuilt: [MessageStruct] = [MessageStruct(role: "system", content: composedSystem)]
+        rebuilt.append(contentsOf: contextMessages.filter { $0.role != "system" })
+
+        let completion: (MessageStruct?, Error?) -> Void = { [weak self] responseMessage, error in
+            guard let self = self else { return }
+            // Restore previous model selection.
+            ModelSelectionStore.current = previousModel
+            self.ai_state = .None
+
+            guard let fullIdx = self.messages.firstIndex(where: { $0.id == originalMessage.id }) else { return }
+            var msg = self.messages[fullIdx]
+
+            if let response = responseMessage, !response.content.isEmpty {
+                // Update the placeholder alternate with the actual content.
+                let altIdx = newAlternateIndex - 1
+                if altIdx < msg.alternates.count {
+                    msg.alternates[altIdx].content = response.content
+                }
+                msg.selectedAlternateIndex = newAlternateIndex
+            } else {
+                // Failed — remove the placeholder alternate.
+                let altIdx = newAlternateIndex - 1
+                if altIdx < msg.alternates.count {
+                    msg.alternates.remove(at: altIdx)
+                }
+                // Revert selection to original or last valid alternate.
+                msg.selectedAlternateIndex = msg.alternates.isEmpty ? nil : 0
+            }
+
+            self.messages[fullIdx] = msg
+
+            // Persist the updated message.
+            let conversation = self.ensureCurrentConversation()
+            self.conversationManager.updateMessage(msg, in: conversation)
+
+            DispatchQueue.main.async {
+                self.tableView.reloadData()
+                self.scrollToMessage(atVisibleIndex: visibleIndex)
+
+                if responseMessage == nil || responseMessage?.content.isEmpty == true {
+                    EarconPlayer.shared.play(.error)
+                }
+            }
+        }
+
+        // Route to the correct provider.
+        switch model.provider {
+        case .anthropic:
+            AnthropicChat.shared.chat(messages: rebuilt, tools: toolsToSend, completion: completion)
+        case .openAI:
+            OpenAIChat.shared.chat(messages: rebuilt, tools: toolsToSend, completion: completion)
+        case .fireworks:
+            FireworksChat.shared.chat(messages: rebuilt, tools: toolsToSend, completion: completion)
+        case .apple:
+            // For on-device Apple, use the simpler single-prompt path.
+            AgentHarness.shared.chat(messages: contextMessages, tools: nil, completion: completion)
+        }
+    }
+
+    /// Scroll to a specific visible message by index.
+    private func scrollToMessage(atVisibleIndex index: Int) {
+        guard index < visible_messages.count else { return }
+        let ip = IndexPath(row: index, section: 0)
+        tableView.scrollToRow(at: ip, at: .middle, animated: true)
+    }
+
     /// Create a new conversation seeded with every message (including system
     /// and function-call turns) up to and including the visible message at
     /// `visibleIndex`, then switch to it. The original conversation is
@@ -2462,6 +2637,17 @@ extension MessagingVC: UITableViewDelegate, UITableViewDataSource {
         if let fresh = conversationManager.getConversation(by: branchedConversation.id) {
             loadConversation(fresh)
         }
+    }
+}
+
+// MARK: - MessagingCellVariantDelegate
+
+extension MessagingVC: MessagingCellVariantDelegate {
+    func messagingCell(_ cell: MessagingCell, didSelectVariantIndex index: Int, forMessageId messageId: String) {
+        guard let fullIdx = messages.firstIndex(where: { $0.id == messageId }) else { return }
+        messages[fullIdx].selectedAlternateIndex = index
+        let conversation = ensureCurrentConversation()
+        conversationManager.updateMessage(messages[fullIdx], in: conversation)
     }
 }
 

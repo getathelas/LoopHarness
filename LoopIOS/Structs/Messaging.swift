@@ -88,6 +88,22 @@ struct TokenUsage {
     }
 }
 
+/// A single regenerated alternate for an assistant message. Lightweight
+/// value type holding just the response text and the model that produced it.
+struct MessageAlternate {
+    let id: String
+    var content: String
+    var model: String
+    let createdAt: Date
+
+    init(id: String = UUID().uuidString, content: String, model: String, createdAt: Date = Date()) {
+        self.id = id
+        self.content = content
+        self.model = model
+        self.createdAt = createdAt
+    }
+}
+
 struct MessageStruct {
     var id: String = UUID().uuidString
     var role: String
@@ -155,6 +171,39 @@ struct MessageStruct {
     /// `usage` object. `nil` for on-device Apple responses and older
     /// persisted messages.
     var tokenUsage: TokenUsage? = nil
+
+    /// Alternate responses generated via Regenerate. Each entry is a full
+    /// assistant response produced by a (potentially different) model from
+    /// the same conversation context. The original response is always at
+    /// conceptual index 0 (it IS this MessageStruct); alternates live here
+    /// starting at logical index 1. Empty for messages that have never
+    /// been regenerated, which is the common case.
+    var alternates: [MessageAlternate] = []
+
+    /// Index into `[self] + alternates` that future turns should treat as
+    /// the "selected" response. `nil` (or 0) means the original response
+    /// is selected. When the user swipes to a different card, this is
+    /// updated and persisted so subsequent LLM calls use a deterministic
+    /// context.
+    var selectedAlternateIndex: Int? = nil
+
+    /// The content string that downstream context-building should use.
+    /// Returns the selected alternate's content when one is active,
+    /// otherwise the original `content`.
+    var activeContent: String {
+        guard let idx = selectedAlternateIndex, idx > 0, idx <= alternates.count else {
+            return content
+        }
+        return alternates[idx - 1].content
+    }
+
+    /// The model label for the currently selected variant.
+    var activeModel: String {
+        guard let idx = selectedAlternateIndex, idx > 0, idx <= alternates.count else {
+            return model
+        }
+        return alternates[idx - 1].model
+    }
 
     /// Explicit init that still accepts `function:` as a singular optional —
     /// keeps existing call sites compiling now that `function` is a computed

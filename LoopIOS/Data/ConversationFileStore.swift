@@ -305,6 +305,32 @@ final class ConversationFileStore {
         }
     }
 
+    /// Replace a single message in a conversation by id. The cache is
+    /// updated synchronously; the file is rewritten on `ioQueue`. Used when
+    /// alternates are added to an existing assistant message.
+    func updateMessage(_ message: SimpleMessage, inConversation conversationId: String) {
+        cacheLock.lock()
+        guard var conv = cache[conversationId] else { cacheLock.unlock(); return }
+        guard let idx = conv.messages.firstIndex(where: { $0.id == message.id }) else {
+            cacheLock.unlock(); return
+        }
+        conv.messages[idx] = message
+        conv.updatedAt = Date()
+        cache[conversationId] = conv
+        pendingWrites.insert(conversationId)
+        recomputeOrderedIdsLocked()
+        cacheLock.unlock()
+        let snapshot = conv
+        postChangeNotification()
+        ioQueue.async { [weak self] in
+            guard let self = self else { return }
+            self.rewriteFile(for: snapshot)
+            self.cacheLock.lock()
+            self.pendingWrites.remove(conversationId)
+            self.cacheLock.unlock()
+        }
+    }
+
     // MARK: - Pass 1: cheap synchronous bootstrap
     //
     // Reads only the trailing meta line of each .ndjson file. For evicted

@@ -36,6 +36,13 @@ protocol MessagingCellPDFDelegate: AnyObject {
     func messagingCellDidTapPDFRetry(attachmentId: String)
 }
 
+/// Called when the user swipes to a different variant card in a multi-
+/// variant assistant message. The receiver should update the message's
+/// `selectedAlternateIndex` and persist the change.
+protocol MessagingCellVariantDelegate: AnyObject {
+    func messagingCell(_ cell: MessagingCell, didSelectVariantIndex index: Int, forMessageId messageId: String)
+}
+
 class MessagingCell: UITableViewCell {
     let profileImageView = UIImageView()
     let textView = UITextView()
@@ -261,6 +268,44 @@ class MessagingCell: UITableViewCell {
     /// "| 2.03s to audio" suffix without losing the base text on cell reuse.
     private var baseModelText: String?
 
+    // MARK: - Alternate variant views (regenerate-as-card)
+
+    /// Horizontal paging scroll view that holds variant cards when the
+    /// message has alternates. Hidden for single-variant messages.
+    private lazy var variantScrollView: UIScrollView = {
+        let sv = UIScrollView()
+        sv.translatesAutoresizingMaskIntoConstraints = false
+        sv.isPagingEnabled = true
+        sv.showsHorizontalScrollIndicator = false
+        sv.showsVerticalScrollIndicator = false
+        sv.isHidden = true
+        sv.delegate = self
+        sv.clipsToBounds = false
+        return sv
+    }()
+
+    /// Page dots shown below the variant scroll view.
+    private lazy var variantPageControl: UIPageControl = {
+        let pc = UIPageControl()
+        pc.translatesAutoresizingMaskIntoConstraints = false
+        pc.isHidden = true
+        pc.currentPageIndicatorTintColor = .label
+        pc.pageIndicatorTintColor = .tertiaryLabel
+        pc.addTarget(self, action: #selector(pageControlChanged), for: .valueChanged)
+        return pc
+    }()
+
+    private var variantCardViews: [UIView] = []
+    private var variantConstraints: [NSLayoutConstraint] = []
+    /// The message id of the message currently showing variants. Kept so
+    /// scroll-end can map back to the delegate call.
+    private var variantMessageId: String?
+    /// Stored data for the current variants (original + alternates).
+    private var variantData: [(content: String, model: String)] = []
+
+    /// Delegate called when the user swipes to a different variant card.
+    weak var variantDelegate: MessagingCellVariantDelegate?
+
     // Store constraints to avoid conflicts during cell reuse
     private var textViewConstraints: [NSLayoutConstraint] = []
     private var animatingTextViewConstraints: [NSLayoutConstraint] = []
@@ -381,6 +426,17 @@ class MessagingCell: UITableViewCell {
         onboardingCardConstraints.removeAll()
         onboardingDelegate = nil
         
+        // Variant card cleanup.
+        variantScrollView.isHidden = true
+        variantPageControl.isHidden = true
+        for v in variantCardViews { v.removeFromSuperview() }
+        variantCardViews.removeAll()
+        NSLayoutConstraint.deactivate(variantConstraints)
+        variantConstraints.removeAll()
+        variantMessageId = nil
+        variantData.removeAll()
+        variantDelegate = nil
+
         // Reset view states
         textView.alpha = 1.0
         animatingtextView.alpha = 1.0
@@ -413,6 +469,7 @@ class MessagingCell: UITableViewCell {
         NSLayoutConstraint.deactivate(profileImageViewConstraints)
         NSLayoutConstraint.deactivate(shimmerLabelConstraints)
         NSLayoutConstraint.deactivate(modelLabelConstraints)
+        NSLayoutConstraint.deactivate(variantConstraints)
 
         // Clear the arrays
         textViewConstraints.removeAll()
@@ -420,6 +477,9 @@ class MessagingCell: UITableViewCell {
         profileImageViewConstraints.removeAll()
         shimmerLabelConstraints.removeAll()
         modelLabelConstraints.removeAll()
+        for v in variantCardViews { v.removeFromSuperview() }
+        variantCardViews.removeAll()
+        variantConstraints.removeAll()
     }
     
     func setAnimationState(state: AIState) {
@@ -517,6 +577,14 @@ class MessagingCell: UITableViewCell {
         }
 
         if data.role == "assistant" {
+            // Alternate-variant path: when the assistant message has at
+            // least one regenerated alternate, render the response as
+            // horizontally swipeable cards with a page control.
+            if !data.alternates.isEmpty {
+                applyVariantCards(data: data)
+                return
+            }
+
             // Markdown-table fast branch: when the response contains a GFM
             // table, lay it out as a real UIStackView grid instead of
             // routing through the single-text-view + animation path.
@@ -735,6 +803,167 @@ class MessagingCell: UITableViewCell {
         // expanded AgentView transcript share a single source of truth for
         // markdown styling.
         return MarkdownAttributedString.render(text)
+    }
+
+    // MARK: - Variant cards (regenerate alternates)
+
+    /// Render the assistant response and its alternates as horizontally
+    /// swipeable cards. Each card shows the response text + model label.
+    private func applyVariantCards(data: MessageStruct) {
+        profileImageView.isHidden = true
+        textView.isHidden = true
+        animatingtextView.isHidden = true
+        actionButton.isHidden = true
+        shimmerLabel.isHidden = true
+        modelLabel.isHidden = true
+        ttsIndicator.isHidden = true
+
+        // Tear down any previous variant pass.
+        for v in variantCardViews { v.removeFromSuperview() }
+        variantCardViews.removeAll()
+        NSLayoutConstraint.deactivate(variantConstraints)
+        variantConstraints.removeAll()
+
+        // Build variant data: original at index 0, then alternates.
+        variantData = [(content: data.content, model: data.model)]
+        for alt in data.alternates {
+            variantData.append((content: alt.content, model: alt.model))
+        }
+        variantMessageId = data.id
+
+        // Add scroll view and page control if not yet in superview.
+        if variantScrollView.superview == nil {
+            contentView.addSubview(variantScrollView)
+            contentView.addSubview(variantPageControl)
+        }
+        variantScrollView.isHidden = false
+        variantPageControl.isHidden = variantData.count <= 1
+
+        variantPageControl.numberOfPages = variantData.count
+        let selectedIdx = data.selectedAlternateIndex ?? 0
+        variantPageControl.currentPage = selectedIdx
+
+        // Create a card for each variant.
+        var previousCard: UIView? = nil
+        for (i, variant) in variantData.enumerated() {
+            let card = makeVariantCard(
+                content: variant.content,
+                model: variant.model,
+                index: i,
+                total: variantData.count
+            )
+            variantScrollView.addSubview(card)
+            variantCardViews.append(card)
+
+            variantConstraints.append(contentsOf: [
+                card.topAnchor.constraint(equalTo: variantScrollView.topAnchor),
+                card.bottomAnchor.constraint(equalTo: variantScrollView.bottomAnchor),
+                card.widthAnchor.constraint(equalTo: variantScrollView.widthAnchor),
+            ])
+            if let prev = previousCard {
+                variantConstraints.append(
+                    card.leadingAnchor.constraint(equalTo: prev.trailingAnchor)
+                )
+            } else {
+                variantConstraints.append(
+                    card.leadingAnchor.constraint(equalTo: variantScrollView.contentLayoutGuide.leadingAnchor)
+                )
+            }
+            previousCard = card
+        }
+
+        // Trailing edge of the last card pins the content size.
+        if let last = previousCard {
+            variantConstraints.append(
+                last.trailingAnchor.constraint(equalTo: variantScrollView.contentLayoutGuide.trailingAnchor)
+            )
+        }
+
+        // Content height = scroll view frame height (no vertical scrolling).
+        variantConstraints.append(
+            variantScrollView.contentLayoutGuide.heightAnchor.constraint(
+                equalTo: variantScrollView.frameLayoutGuide.heightAnchor
+            )
+        )
+
+        // Layout: scroll view fills the cell width, page control below.
+        variantConstraints.append(contentsOf: [
+            variantScrollView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            variantScrollView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            variantScrollView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 8),
+
+            variantPageControl.topAnchor.constraint(equalTo: variantScrollView.bottomAnchor, constant: 4),
+            variantPageControl.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+            contentView.bottomAnchor.constraint(greaterThanOrEqualTo: variantPageControl.bottomAnchor, constant: 8),
+        ])
+
+        NSLayoutConstraint.activate(variantConstraints)
+
+        // Scroll to the selected variant without animation on initial layout.
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            let xOffset = CGFloat(selectedIdx) * self.variantScrollView.bounds.width
+            self.variantScrollView.setContentOffset(CGPoint(x: xOffset, y: 0), animated: false)
+        }
+    }
+
+    /// Build a single variant card view (text + model label).
+    private func makeVariantCard(content: String, model: String, index: Int, total: Int) -> UIView {
+        let container = UIView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+
+        let tv = UITextView()
+        tv.translatesAutoresizingMaskIntoConstraints = false
+        tv.isEditable = false
+        tv.isScrollEnabled = false
+        tv.isSelectable = true
+        tv.delegate = self
+        tv.textContainerInset = .zero
+        tv.textContainer.lineFragmentPadding = 0
+        tv.textContainer.maximumNumberOfLines = 0
+        tv.textContainer.widthTracksTextView = true
+        tv.backgroundColor = .clear
+
+        if content.isEmpty {
+            // Placeholder for in-flight regeneration.
+            tv.text = "Generating…"
+            tv.textColor = .tertiaryLabel
+            tv.font = UIFont.preferredFont(forTextStyle: .body)
+        } else {
+            tv.attributedText = attributedString(from: content)
+            tv.textColor = .label
+        }
+
+        let ml = UILabel()
+        ml.translatesAutoresizingMaskIntoConstraints = false
+        ml.text = "\(model) · \(index + 1)/\(total)"
+        ml.textColor = .secondaryLabel
+        ml.font = UIFont.preferredFont(forTextStyle: .caption2)
+        ml.numberOfLines = 1
+
+        container.addSubview(tv)
+        container.addSubview(ml)
+
+        NSLayoutConstraint.activate([
+            tv.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
+            tv.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
+            tv.topAnchor.constraint(equalTo: container.topAnchor, constant: 4),
+
+            ml.leadingAnchor.constraint(equalTo: tv.leadingAnchor),
+            ml.topAnchor.constraint(equalTo: tv.bottomAnchor, constant: 4),
+            ml.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -4),
+        ])
+
+        return container
+    }
+
+    @objc private func pageControlChanged() {
+        let page = variantPageControl.currentPage
+        let xOffset = CGFloat(page) * variantScrollView.bounds.width
+        variantScrollView.setContentOffset(CGPoint(x: xOffset, y: 0), animated: true)
+        if let msgId = variantMessageId {
+            variantDelegate?.messagingCell(self, didSelectVariantIndex: page, forMessageId: msgId)
+        }
     }
 
     // MARK: - Type-on reveal
@@ -2157,6 +2386,17 @@ extension MessagingCell: UITextViewDelegate {
             }
         }
         return defaultAction
+    }
+
+    // MARK: - UIScrollViewDelegate (variant paging)
+
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+        guard scrollView === variantScrollView, scrollView.bounds.width > 0 else { return }
+        let page = Int(round(scrollView.contentOffset.x / scrollView.bounds.width))
+        variantPageControl.currentPage = page
+        if let msgId = variantMessageId {
+            variantDelegate?.messagingCell(self, didSelectVariantIndex: page, forMessageId: msgId)
+        }
     }
 
     private func openLink(_ url: URL) {
