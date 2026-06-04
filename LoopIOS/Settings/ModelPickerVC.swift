@@ -200,6 +200,12 @@ extension ModelPickerVC: UITableViewDataSource, UITableViewDelegate {
                 ? "Uses your \(key.displayName)"
                 : "Needs your \(key.displayName) — add it in Settings ▸ Keys"
         }
+        if tts == .piperOffline {
+            let loaded = PiperTTSService.shared.isModelLoaded
+            return loaded
+                ? "On-device Piper voice model. No network, no API key."
+                : "Piper voice model not bundled — see README for setup."
+        }
         return "On-device. No network, no API key."
     }
 

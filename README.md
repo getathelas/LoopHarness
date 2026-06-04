@@ -29,7 +29,7 @@ conversations.
   storage; the agent reads and writes its own long-term knowledge.
 - **Sub-agents** — spawn isolated agents for multi-step background tasks
   (`LoopIOS/SubAgents/`).
-- **Voice pipeline** — push-to-talk capture, Deepgram STT, ElevenLabs/Apple
+- **Voice pipeline** — push-to-talk capture, Deepgram STT, ElevenLabs/Apple/Piper
   TTS, and speech sanitization (`LoopIOS/SpeechPipeline/`, `LoopMac/`).
 - **Obsidian integration** — read/write an Obsidian vault through a
   self-hosted relay.
@@ -76,6 +76,25 @@ Optional: to bake API keys in at build time instead of entering them in-app,
 add them to the same `Secrets.xcconfig` (see comments in
 `Secrets.xcconfig.example`). For the Python scripts, copy `.env.example` →
 `.env`.
+
+### Piper offline TTS (optional)
+
+Loop supports fully offline voice synthesis via [Piper](https://github.com/rhasspy/piper).
+To enable it:
+
+1. Download a Piper ONNX voice model (e.g.
+   [`en_US-lessac-medium.onnx`](https://huggingface.co/rhasspy/piper-voices/tree/main/en/en_US/lessac/medium))
+   and its companion config (`en_US-lessac-medium.onnx.json`).
+2. Drag both files into the Xcode project under the **Loop** iOS target so
+   they are included in the app bundle ("Copy items if needed" ✓, target
+   membership **Loop** ✓).
+3. Build & run. In **Settings → Model → TTS**, select **Piper (offline)**.
+
+The `PiperTTSService` stub currently generates silence while the ONNX
+Runtime integration is in progress. Once a real model is bundled and the
+ONNX Runtime dependency added, synthesis will produce spoken audio. If the
+model is not found at runtime the app falls back to Apple's built-in
+on-device voice automatically.
 
 ## Security & privacy
 

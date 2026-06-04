@@ -1594,6 +1594,9 @@ extension MessagingVC: MessageBoxDelegate {
             // User explicitly chose offline TTS — skip any network providers.
             speakOffline(text: cleanContent, messageId: message.id)
             return
+        case .piperOffline:
+            speakPiper(text: cleanContent, messageId: message.id)
+            return
         }
         if took { return }
 
@@ -1722,7 +1725,56 @@ extension MessagingVC: MessageBoxDelegate {
         VoiceLoopCoordinator.shared.setState(.speaking)
         print("Offline TTS: speaking message \(messageId) with voice \(voice?.name ?? "system default") at \(speechSpeed.label)")
     }
-    
+
+    /// Speak `text` using the on-device Piper ONNX model. Falls back to
+    /// AVSpeechSynthesizer if the model isn't bundled or synthesis fails.
+    private func speakPiper(text: String, messageId: String) {
+        if isMuted {
+            VoiceLoopCoordinator.shared.setState(.idle)
+            return
+        }
+
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+
+            let wavData: Data
+            do {
+                wavData = try PiperTTSService.shared.synthesize(text: text)
+            } catch {
+                // Piper unavailable — fall back to Apple on-device TTS.
+                print("PiperTTS: synthesis failed (\(error.localizedDescription)), falling back to system voice")
+                DispatchQueue.main.async {
+                    self.speakOffline(text: text, messageId: messageId)
+                }
+                return
+            }
+
+            DispatchQueue.main.async {
+                do {
+                    try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
+                    try AVAudioSession.sharedInstance().setActive(true)
+                } catch {
+                    print("PiperTTS: audio session setup failed (\(error))")
+                }
+
+                do {
+                    let player = try AVAudioPlayer(data: wavData)
+                    player.enableRate = true
+                    player.rate = self.speechSpeed.avSpeechRate
+                    self.audioPlayer = player
+                    self.currentSpeechMessageId = messageId
+                    player.play()
+                    self.markAudioReady(forMessageId: messageId)
+                    VoiceLoopCoordinator.shared.setState(.speaking)
+                    print("PiperTTS: playing message \(messageId)")
+                } catch {
+                    print("PiperTTS: AVAudioPlayer failed (\(error)), falling back to system voice")
+                    self.speakOffline(text: text, messageId: messageId)
+                }
+            }
+        }
+    }
+
     private func scrollToLastMessage() {
         if self.visible_messages.count > 0 {
             let lastIndex = IndexPath(row: self.visible_messages.count - 1, section: 0)
@@ -1895,6 +1947,20 @@ extension MessagingVC {
                 title: "Voice",
                 image: UIImage(systemName: "person.wave.2"),
                 children: voiceActions
+            )
+
+        case .piperOffline:
+            let modelLoaded = PiperTTSService.shared.isModelLoaded
+            let statusLabel = modelLoaded ? "Model loaded" : "Model not bundled — add a Piper .onnx to the app bundle"
+            let action = UIAction(
+                title: PiperTTSService.shared.modelName,
+                subtitle: statusLabel,
+                state: .on
+            ) { _ in }
+            return UIMenu(
+                title: "Voice",
+                image: UIImage(systemName: "person.wave.2"),
+                children: [action]
             )
 
         case .aura2, .elevenLabsV3, .elevenLabsFlashV25, .openAIMiniTTS:

@@ -95,6 +95,7 @@ enum TTSProvider: String, CaseIterable {
     case elevenLabsFlashV25 = "elevenLabsFlashV25" // ElevenLabs Flash v2.5 — low-latency (~75ms model TTFB), less expressive than v3
     case openAIMiniTTS      = "openAIMiniTTS"      // OpenAI gpt-4o-mini-tts — steerable via instructions
     case system             = "system"             // On-device AVSpeechSynthesizer (no network)
+    case piperOffline       = "piperOffline"       // On-device Piper ONNX voice model (no network)
 
     /// Human-readable name shown in the speaker menu.
     var displayName: String {
@@ -104,6 +105,7 @@ enum TTSProvider: String, CaseIterable {
         case .elevenLabsFlashV25: return "ElevenLabs Flash v2.5"
         case .openAIMiniTTS:      return "OpenAI gpt-4o-mini-tts"
         case .system:             return "On-device (offline)"
+        case .piperOffline:       return "Piper (offline)"
         }
     }
 
@@ -136,6 +138,8 @@ enum TTSProvider: String, CaseIterable {
                 .map { ($0.capitalized, $0) }
         case .system:
             return []
+        case .piperOffline:
+            return []
         }
     }
 
@@ -147,6 +151,7 @@ enum TTSProvider: String, CaseIterable {
         case .elevenLabsFlashV25: return "21m00Tcm4TlvDq8ikWAM"
         case .openAIMiniTTS:      return "shimmer"
         case .system:             return ""
+        case .piperOffline:       return "en_US-lessac-medium"
         }
     }
 }
@@ -179,6 +184,7 @@ enum TTSProviderStore {
         case .elevenLabsV3, .elevenLabsFlashV25:      return .elevenLabs
         case .openAIMiniTTS:                          return .openAI
         case .system:                                 return nil
+        case .piperOffline:                              return nil
         }
     }
 }
