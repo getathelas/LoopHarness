@@ -1248,6 +1248,8 @@ extension MessagingVC: MessageBoxDelegate {
         // Add message to conversation
         conversationManager.addMessage(messageStruct, to: conversation)
 
+        AppSignals.emit("message_sent", ["length": message.count])
+
         // Update local conversation reference
         currentConversationEntity = conversationManager.currentConversation
 

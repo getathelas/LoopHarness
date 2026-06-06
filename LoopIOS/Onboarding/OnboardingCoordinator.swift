@@ -200,6 +200,7 @@ final class OnboardingCoordinator {
         // working key and make the greeting inaccurate. Pin Apple only when
         // no hosted key exists.
         if resumed == .greeting {
+            AppSignals.emit("onboarding_started")
             if !ModelProvider.hasAnyProviderKey {
                 pinAppleFoundationModel()
             }
@@ -570,6 +571,7 @@ final class OnboardingCoordinator {
 
     private func complete() {
         OnboardingState.isComplete = true
+        AppSignals.emit("onboarding_completed")
         // Onboarding is over — hand the full chat surface back to the user.
         host?.onboardingSetInteractionEnabled(input: true, chrome: true)
         host?.onboardingDidComplete()
