@@ -1,0 +1,55 @@
+{
+  "name": "goal_agent",
+  "description": "Persistent, goal-directed agent that tracks a measurable KPI over a quarter or longer. Supports create/check-in, list, and kill subcommands. Reads metrics from Stripe, GitHub, SSH, or custom URLs; dispatches Devin/Cursor agents for corrective action; and stores state across runs.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "goal_name": {
+        "type": "string",
+        "description": "Human-readable name for the goal (e.g. 'rcmapi-revenue'). Used as the unique identifier."
+      },
+      "target_metric": {
+        "type": "string",
+        "description": "Description of what is being measured (e.g. 'Monthly revenue USD')."
+      },
+      "metric_source": {
+        "type": "object",
+        "description": "Where to read the current metric value. { type: 'stripe' | 'github' | 'ssh_command' | 'custom_url', config: {...} }",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["stripe", "github", "ssh_command", "custom_url"],
+            "description": "The metric source backend."
+          },
+          "config": {
+            "type": "object",
+            "description": "Backend-specific config (e.g. { endpoint, api_key } for stripe; { repo, path, ref, jq } for github; { command, host } for ssh_command; { url, method, headers, json_path } for custom_url)."
+          }
+        }
+      },
+      "target_value": {
+        "type": ["number", "string"],
+        "description": "The OKR target value."
+      },
+      "deadline": {
+        "type": "string",
+        "description": "ISO date for the goal deadline (e.g. '2026-09-30')."
+      },
+      "check_cadence": {
+        "type": "string",
+        "description": "Cron expression for check-in frequency (e.g. '0 9 * * 1' for weekly Monday 9am). Stored for scheduling reference."
+      },
+      "tools": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Allowed tool names: 'devin', 'cursor', 'ssh', 'github', 'slack_dm'."
+      },
+      "subcommand": {
+        "type": "string",
+        "enum": ["create", "list", "kill"],
+        "description": "Operation to perform. 'create' (default) creates a goal or runs a check-in. 'list' shows all active goals. 'kill' removes a goal agent."
+      }
+    },
+    "required": ["goal_name"]
+  }
+}
