@@ -191,7 +191,8 @@ final class HQWorld {
             return
         }
 
-        let tiles = pending
+        // Nearest-first: the deck underfoot sharpens before the skyline.
+        let tiles = pending.sorted { $0.distance < $1.distance }
         await withTaskGroup(of: Void.self) { group in
             var iterator = tiles.makeIterator()
             // A few tiles in flight at a time: enough to saturate the

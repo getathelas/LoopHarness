@@ -19,6 +19,9 @@ struct TileStreamer {
         let url: URL
         /// Geometric error of the node, kept for debugging/telemetry.
         let geometricError: Double
+        /// Horizontal distance (m) from the park anchor; used to load
+        /// nearest tiles first.
+        let distance: Double
     }
 
     enum StreamError: Error {
@@ -28,14 +31,19 @@ struct TileStreamer {
 
     let apiKey: String
 
-    /// Stop descending once a node is at least this detailed (metres of
-    /// geometric error). Lower = sharper + many more tiles. ~6 m hits the
-    /// level where façades and trees are clearly readable without blowing
-    /// past Vision Pro memory for a ~300 m radius scene.
-    var targetGeometricError = 6.0
+    /// Hard cap on the number of GLBs fetched, as a memory backstop. Tiles
+    /// are loaded nearest-first, so when the cap bites it's distant context
+    /// that gets dropped, never the deck underfoot.
+    var maxTiles = 450
 
-    /// Hard cap on the number of GLBs fetched, as a memory backstop.
-    var maxTiles = 220
+    /// Distance-based level of detail: the geometric error (m) we'll accept
+    /// for a node whose bounding volume is `distance` metres from the park
+    /// anchor. Full photogrammetry resolution on and around the deck (the
+    /// finest Google tiles are ~1 m GE), coarsening smoothly with distance so
+    /// the skyline stays cheap. The divisor is the quality/memory knob.
+    static func targetGeometricError(atDistance distance: Double) -> Double {
+        min(max(distance / 35.0, 1.0), 20.0)
+    }
 
     private let baseURL = URL(string: "https://tile.googleapis.com")!
     private let session: URLSession = {
@@ -78,7 +86,8 @@ struct TileStreamer {
             guard intersectsPark(node.boundingVolume) else { continue }
 
             let children = node.children ?? []
-            if node.geometricError > targetGeometricError {
+            let distance = horizontalDistance(of: node.boundingVolume)
+            if node.geometricError > Self.targetGeometricError(atDistance: distance) {
                 if !children.isEmpty {
                     stack.append(contentsOf: children)
                     continue
@@ -97,7 +106,7 @@ struct TileStreamer {
             if let uri = node.content?.uri, uri.contains(".glb") {
                 if let url = requestURL(uri: uri, sessionToken: sessionToken) {
                     count += 1
-                    onTile(Tile(url: url, geometricError: node.geometricError))
+                    onTile(Tile(url: url, geometricError: node.geometricError, distance: distance))
                 }
             } else if !children.isEmpty {
                 // No renderable content at this level; keep descending.
@@ -156,6 +165,30 @@ struct TileStreamer {
     }
 
     // MARK: Bounding-volume tests
+
+    /// Conservative horizontal distance (m) from the park anchor to the
+    /// node's bounding volume (0 when the volume covers the anchor). Drives
+    /// the distance-based LOD, so erring small just means extra detail.
+    private func horizontalDistance(of volume: Node.BoundingVolume) -> Double {
+        if let region = volume.region, region.count >= 6 {
+            let center = HQGeo.parkPosition(
+                latitude: (region[1] + region[3]) / 2,
+                longitude: (region[0] + region[2]) / 2,
+                height: 0
+            )
+            let corner = HQGeo.parkPosition(latitude: region[3], longitude: region[2], height: 0)
+            let halfDiagonal = simd_length(SIMD2(corner.x - center.x, corner.z - center.z))
+            return max(0, simd_length(SIMD2(center.x, center.z)) - halfDiagonal)
+        }
+        if let box = volume.box, box.count >= 12 {
+            let center = SIMD3(box[0], box[1], box[2])
+            let radius = simd_length(SIMD3(box[3], box[4], box[5]))
+                + simd_length(SIMD3(box[6], box[7], box[8]))
+                + simd_length(SIMD3(box[9], box[10], box[11]))
+            return max(0, simd_distance(center, HQGeo.anchorECEF) - radius)
+        }
+        return 0
+    }
 
     private func intersectsPark(_ volume: Node.BoundingVolume) -> Bool {
         if let region = volume.region, region.count >= 6 {
