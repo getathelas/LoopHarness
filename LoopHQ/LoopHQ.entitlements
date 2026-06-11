@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  SharePlay (GroupActivities) for the shared park session. The Apple
+	  Developer App ID for com.bhat.intel.hq needs the Group Activities
+	  capability enabled for device builds; the simulator doesn't check.
+	-->
+	<key>com.apple.developer.group-session</key>
+	<true/>
+</dict>
+</plist>

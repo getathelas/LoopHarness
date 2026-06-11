@@ -16,6 +16,8 @@
 		DA17C13000000000000000B6 /* NIOSSH in Frameworks */ = {isa = PBXBuildFile; productRef = DA17C13000000000000000A6 /* NIOSSH */; };
 		DA17C14000000000000000D4 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = DA17C14000000000000000C4 /* SwiftTerm */; };
 		DA17C15000000000000000F5 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = DA17C15000000000000000E5 /* Sparkle */; };
+		DA17C17000000000000000B4 /* GLTFKit2 in Frameworks */ = {isa = PBXBuildFile; productRef = DA17C17000000000000000A4 /* GLTFKit2 */; };
+		DA17C18000000000000000B4 /* DracoSwift in Frameworks */ = {isa = PBXBuildFile; productRef = DA17C18000000000000000A4 /* DracoSwift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -48,6 +50,7 @@
 		6A0903832CD69D9500E70D46 /* Loop.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Loop.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6B00010100000000DEADBEEF /* LoopMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LoopMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6C00020100000000DEADBEEF /* LoopVision.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LoopVision.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		6D00040100000000DEADBEEF /* LoopHQ.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LoopHQ.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -120,6 +123,13 @@
 				Info.plist,
 			);
 			target = 6C00020A00000000DEADBEEF /* LoopVision */;
+		};
+		6D00040600000000DEADBEEF /* Exceptions for "LoopHQ" folder in "LoopHQ" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 6D00040A00000000DEADBEEF /* LoopHQ */;
 		};
 		6C00020700000000DEADBEEF /* Exceptions for "LoopIOS" folder in "LoopVision" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
@@ -197,6 +207,14 @@
 			path = LoopVision;
 			sourceTree = "<group>";
 		};
+		6D00040500000000DEADBEEF /* LoopHQ */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				6D00040600000000DEADBEEF /* Exceptions for "LoopHQ" folder in "LoopHQ" target */,
+			);
+			path = LoopHQ;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -236,6 +254,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		6D00040300000000DEADBEEF /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DA17C17000000000000000B4 /* GLTFKit2 in Frameworks */,
+				DA17C18000000000000000B4 /* DracoSwift in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -247,6 +274,7 @@
 				6B00010500000000DEADBEEF /* LoopMac */,
 				5EE7AAD32FB7A82B00062171 /* LoopShare */,
 				6C00020500000000DEADBEEF /* LoopVision */,
+				6D00040500000000DEADBEEF /* LoopHQ */,
 				6A0903842CD69D9500E70D46 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -258,6 +286,7 @@
 				6B00010100000000DEADBEEF /* LoopMac.app */,
 				5EE7AAD22FB7A82B00062171 /* LoopShare.appex */,
 				6C00020100000000DEADBEEF /* LoopVision.app */,
+				6D00040100000000DEADBEEF /* LoopHQ.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -365,6 +394,30 @@
 			productReference = 6C00020100000000DEADBEEF /* LoopVision.app */;
 			productType = "com.apple.product-type.application";
 		};
+		6D00040A00000000DEADBEEF /* LoopHQ */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6D00040800000000DEADBEEF /* Build configuration list for PBXNativeTarget "LoopHQ" */;
+			buildPhases = (
+				6D00040200000000DEADBEEF /* Sources */,
+				6D00040300000000DEADBEEF /* Frameworks */,
+				6D00040400000000DEADBEEF /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				6D00040500000000DEADBEEF /* LoopHQ */,
+			);
+			name = LoopHQ;
+			packageProductDependencies = (
+				DA17C17000000000000000A4 /* GLTFKit2 */,
+				DA17C18000000000000000A4 /* DracoSwift */,
+			);
+			productName = LoopHQ;
+			productReference = 6D00040100000000DEADBEEF /* LoopHQ.app */;
+			productType = "com.apple.product-type.application";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -387,6 +440,9 @@
 					6C00020A00000000DEADBEEF = {
 						CreatedOnToolsVersion = 26.1;
 					};
+					6D00040A00000000DEADBEEF = {
+						CreatedOnToolsVersion = 26.1;
+					};
 				};
 			};
 			buildConfigurationList = 6A09037E2CD69D9500E70D46 /* Build configuration list for PBXProject "Loop" */;
@@ -403,6 +459,8 @@
 				DA17C13000000000000000A1 /* XCRemoteSwiftPackageReference "swift-nio-ssh" */,
 				DA17C14000000000000000C1 /* XCRemoteSwiftPackageReference "SwiftTerm" */,
 				DA17C15000000000000000E1 /* XCRemoteSwiftPackageReference "Sparkle" */,
+				DA17C17000000000000000A1 /* XCRemoteSwiftPackageReference "GLTFKit2" */,
+				DA17C18000000000000000A1 /* XCRemoteSwiftPackageReference "DracoSwift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 6A0903842CD69D9500E70D46 /* Products */;
@@ -413,6 +471,7 @@
 				6B00010A00000000DEADBEEF /* LoopMac */,
 				5EE7AAD12FB7A82B00062171 /* LoopShare */,
 				6C00020A00000000DEADBEEF /* LoopVision */,
+				6D00040A00000000DEADBEEF /* LoopHQ */,
 			);
 		};
 /* End PBXProject section */
@@ -446,6 +505,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		6D00040400000000DEADBEEF /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -471,6 +537,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		6C00020200000000DEADBEEF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		6D00040200000000DEADBEEF /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -921,6 +994,60 @@
 			};
 			name = Release;
 		};
+		6D00040900000000DEADBEEF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = LoopHQ/LoopHQ.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = LoopHQ/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Loop HQ";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bhat.intel.hq;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = xros;
+				SUPPORTED_PLATFORMS = "xros xrsimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 7;
+				XROS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Debug;
+		};
+		6D00040B00000000DEADBEEF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = LoopHQ/LoopHQ.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = LoopHQ/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Loop HQ";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bhat.intel.hq;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = xros;
+				SUPPORTED_PLATFORMS = "xros xrsimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 7;
+				XROS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -969,6 +1096,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		6D00040800000000DEADBEEF /* Build configuration list for PBXNativeTarget "LoopHQ" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6D00040900000000DEADBEEF /* Debug */,
+				6D00040B00000000DEADBEEF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -1002,6 +1138,22 @@
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 2.6.0;
+			};
+		};
+		DA17C17000000000000000A1 /* XCRemoteSwiftPackageReference "GLTFKit2" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/warrenm/GLTFKit2";
+			requirement = {
+				kind = exactVersion;
+				version = 0.5.15;
+			};
+		};
+		DA17C18000000000000000A1 /* XCRemoteSwiftPackageReference "DracoSwift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/warrenm/DracoSwift";
+			requirement = {
+				kind = exactVersion;
+				version = 1.5.7;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
@@ -1046,6 +1198,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = DA17C15000000000000000E1 /* XCRemoteSwiftPackageReference "Sparkle" */;
 			productName = Sparkle;
+		};
+		DA17C17000000000000000A4 /* GLTFKit2 */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = DA17C17000000000000000A1 /* XCRemoteSwiftPackageReference "GLTFKit2" */;
+			productName = GLTFKit2;
+		};
+		DA17C18000000000000000A4 /* DracoSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = DA17C18000000000000000A1 /* XCRemoteSwiftPackageReference "DracoSwift" */;
+			productName = DracoSwift;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSHandsTrackingUsageDescription</key>
+	<string>Loop HQ uses your hand positions as joysticks: pinch and drag to walk around the park and look around.</string>
+	<!--
+	  Build-time Google Maps Tiles API key, resolved from Secrets.xcconfig
+	  (GOOGLE_MAPS_TILES_API_KEY). Optional: without it the app falls back
+	  to flat satellite imagery, and a key can also be entered at runtime in
+	  the lobby. The $(VAR) shape survives when unset and is treated as
+	  absent by HQAppModel.
+	-->
+	<key>GoogleTilesAPIKey</key>
+	<string>$(GOOGLE_MAPS_TILES_API_KEY)</string>
+	<!--
+	  Unlike LoopVision (volumetric-only), Loop HQ launches into a regular
+	  window (the lobby) and opens the immersive space from there, so the
+	  default session role stays the plain application role.
+	-->
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationPreferredDefaultSceneSessionRole</key>
+		<string>UIWindowSceneSessionRoleApplication</string>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<true/>
+		<key>UISceneConfigurations</key>
+		<dict/>
+	</dict>
+</dict>
+</plist>
