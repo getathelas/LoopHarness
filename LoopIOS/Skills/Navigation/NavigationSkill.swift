@@ -148,6 +148,7 @@ Tips:
     /// the dispatch side never lies about what was requested.
     static let knownPanels: Set<String> = [
         "workspace", "files", "skills", "conversations",
+        "keyresults",
         "settings", "integrations", "keys", "subagents",
         "scheduled", "model", "microphone", "agent"
     ]
@@ -157,6 +158,8 @@ Tips:
     private static func canonicalPanel(from raw: String) -> String {
         let n = raw.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         switch n {
+        case "keyresults", "key results", "key_results",
+             "kr", "krs":                                  return "keyresults"
         case "workspace", "file", "files":                 return "files"
         case "skill", "skills":                            return "skills"
         case "conversation", "conversations", "history":  return "conversations"
@@ -176,6 +179,7 @@ Tips:
     private static func canonicalTab(from raw: String) -> String? {
         let n = raw.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         switch n {
+        case "keyresults", "key results", "kr":          return "keyresults"
         case "conversation", "conversations", "history": return "conversations"
         case "file", "files", "workspace":               return "files"
         case "skill", "skills":                          return "skills"
@@ -185,6 +189,7 @@ Tips:
 
     private func prettyName(for panel: String) -> String {
         switch Self.canonicalPanel(from: panel) {
+        case "keyresults":    return "key results"
         case "files":         return "the workspace"
         case "skills":        return "skills"
         case "conversations": return "conversation history"

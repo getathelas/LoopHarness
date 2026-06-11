@@ -1028,6 +1028,8 @@ When the user asks how you work, what you can do, or how you're built, read `ABO
     /// immersive agent view goes through MainVC's pop animator.
     private func openPanel(named panel: String, tab: String?) {
         switch panel {
+        case "keyresults":
+            showSideDrawer(initialTab: tab ?? "keyresults")
         case "files":
             showSideDrawer(initialTab: tab ?? "files")
         case "skills":

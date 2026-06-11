@@ -21,7 +21,7 @@ class SideDrawerViewController: UIViewController {
     private let containerView = UIView()
     private let navigationBar = UINavigationBar()
     private let newNavigationItem = UINavigationItem()
-    private let segmentedControl = UISegmentedControl(items: ["Conversations", "Files", "Skills"])
+    private let segmentedControl = UISegmentedControl(items: ["Key Results", "Conversations", "Files", "Skills"])
 
     /// UserDefaults key for the last-selected segment. Restored on setup so the
     /// drawer reopens on whatever tab the user left it on.
@@ -35,11 +35,12 @@ class SideDrawerViewController: UIViewController {
     /// for both modes — the cell types, row heights, and data sources all
     /// branch on this flag rather than swapping the table out.
     private enum Mode {
+        case keyResults
         case conversations
         case files
         case skills
     }
-    private var mode: Mode = .conversations
+    private var mode: Mode = .keyResults
 
     /// Optional override applied during `setupUI()` before the persisted tab
     /// would otherwise be restored. NavigationSkill sets this when the model
@@ -50,8 +51,9 @@ class SideDrawerViewController: UIViewController {
     /// path and the value-changed handler can't drift apart.
     private func mode(forSegmentIndex index: Int) -> Mode {
         switch index {
-        case 1:  return .files
-        case 2:  return .skills
+        case 0:  return .keyResults
+        case 2:  return .files
+        case 3:  return .skills
         default: return .conversations
         }
     }
@@ -61,9 +63,10 @@ class SideDrawerViewController: UIViewController {
     /// silently fall back to the restored selection.
     private static func segmentIndex(forTab tab: String) -> Int? {
         switch tab.lowercased() {
-        case "conversations", "history": return 0
-        case "files", "workspace":       return 1
-        case "skills":                   return 2
+        case "keyresults", "key results", "kr": return 0
+        case "conversations", "history": return 1
+        case "files", "workspace":       return 2
+        case "skills":                   return 3
         default:                         return nil
         }
     }
@@ -131,6 +134,9 @@ class SideDrawerViewController: UIViewController {
             }
         }
     }
+
+    // MARK: - Key Results state
+    private var keyResults: [KeyResult] = []
 
     // MARK: - Skills state
 
@@ -291,6 +297,7 @@ class SideDrawerViewController: UIViewController {
         let restoredIndex = min(max(resolvedIndex, 0), segmentedControl.numberOfSegments - 1)
         segmentedControl.selectedSegmentIndex = restoredIndex
         mode = mode(forSegmentIndex: restoredIndex)
+        updateNavBarButtons(for: mode)
         rebuildRows(for: mode)
         segmentedControl.addTarget(self, action: #selector(segmentedControlChanged), for: .valueChanged)
         navigationBar.setItems([newNavigationItem], animated: false)
@@ -306,6 +313,7 @@ class SideDrawerViewController: UIViewController {
         tableView.delegate = self
         tableView.dataSource = self
         tableView.register(ConversationCell.self, forCellReuseIdentifier: "ConversationCell")
+        tableView.register(KeyResultCell.self, forCellReuseIdentifier: "KeyResultCell")
         tableView.register(FileTreeCell.self, forCellReuseIdentifier: "FileTreeCell")
         tableView.register(SkillCell.self, forCellReuseIdentifier: "SkillCell")
         // Single-row placeholder for the Files/Skills tabs while a remote VM
@@ -389,6 +397,13 @@ class SideDrawerViewController: UIViewController {
         // the on-device ones), so refresh whatever's on screen.
         nc.addObserver(self, selector: #selector(handleBackendChanged),
                        name: ExecutionBackendStore.didChangeNotification, object: nil)
+        nc.addObserver(self, selector: #selector(handleKeyResultsChanged),
+                       name: KeyResultStore.didChangeNotification, object: nil)
+    }
+
+    @objc private func handleKeyResultsChanged() {
+        guard mode == .keyResults else { return }
+        loadKeyResults()
     }
 
     @objc private func handleConversationsChanged() {
@@ -407,6 +422,7 @@ class SideDrawerViewController: UIViewController {
         fileLoadState = .idle
         skillLoadState = .idle
         switch mode {
+        case .keyResults:    loadKeyResults()
         case .conversations: loadConversations()
         case .files:         rebuildFileRows(); tableView.reloadData()
         case .skills:        rebuildSkillRows(); tableView.reloadData()
@@ -608,18 +624,49 @@ class SideDrawerViewController: UIViewController {
         let index = segmentedControl.selectedSegmentIndex
         UserDefaults.standard.set(index, forKey: Self.selectedTabDefaultsKey)
         mode = mode(forSegmentIndex: index)
+        updateNavBarButtons(for: mode)
         rebuildRows(for: mode)
         tableView.reloadData()
+    }
+
+    private func updateNavBarButtons(for mode: Mode) {
+        switch mode {
+        case .keyResults:
+            newNavigationItem.leftBarButtonItem = UIBarButtonItem(
+                image: UIImage(systemName: "plus"),
+                style: .plain, target: self,
+                action: #selector(newKeyResultTapped))
+        default:
+            newNavigationItem.leftBarButtonItem = nil
+        }
+    }
+
+    @objc private func newKeyResultTapped() {
+        let kr = KeyResult()
+        let detail = KeyResultDetailVC(keyResult: kr, isNew: true)
+        detail.onSave = { [weak self] in self?.loadKeyResults() }
+        let nav = UINavigationController(rootViewController: detail)
+        nav.modalPresentationStyle = .fullScreen
+        (topMostPresenter() ?? self).present(nav, animated: true)
     }
 
     /// Rebuild whichever flat row list backs `mode`. Conversations are loaded
     /// separately (Core Data) so they need no prep here.
     private func rebuildRows(for mode: Mode) {
         switch mode {
+        case .keyResults:    loadKeyResults()
         case .conversations: break
         case .files:         rebuildFileRows()
         case .skills:        rebuildSkillRows()
         }
+    }
+
+    // MARK: - Key Results
+
+    private func loadKeyResults() {
+        keyResults = KeyResultStore.shared.allKeyResults
+            .sorted { $0.updatedAt > $1.updatedAt }
+        tableView.reloadData()
     }
 
     // MARK: - Skills
@@ -918,6 +965,7 @@ extension SideDrawerViewController: UITableViewDataSource, UITableViewDelegate {
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         switch mode {
+        case .keyResults:    return keyResults.count
         case .conversations: return conversations.count
         case .files:         return filesShowStatusRow ? 1 : fileRows.count
         case .skills:        return skillsShowStatusRow ? 1 : skillRows.count
@@ -926,6 +974,11 @@ extension SideDrawerViewController: UITableViewDataSource, UITableViewDelegate {
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         switch mode {
+        case .keyResults:
+            let cell = tableView.dequeueReusableCell(withIdentifier: "KeyResultCell", for: indexPath) as! KeyResultCell
+            let kr = keyResults[indexPath.row]
+            cell.configure(with: kr)
+            return cell
         case .conversations:
             let cell = tableView.dequeueReusableCell(withIdentifier: "ConversationCell", for: indexPath) as! ConversationCell
             let conversation = conversations[indexPath.row]
@@ -979,6 +1032,13 @@ extension SideDrawerViewController: UITableViewDataSource, UITableViewDelegate {
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
         switch mode {
+        case .keyResults:
+            let kr = keyResults[indexPath.row]
+            let detail = KeyResultDetailVC(keyResult: kr)
+            detail.onSave = { [weak self] in self?.loadKeyResults() }
+            let nav = UINavigationController(rootViewController: detail)
+            nav.modalPresentationStyle = .fullScreen
+            (topMostPresenter() ?? self).present(nav, animated: true)
         case .conversations:
             let conversation = conversations[indexPath.row]
             delegate?.sideDrawerDidSelectConversation(conversation)
@@ -1130,6 +1190,7 @@ extension SideDrawerViewController: UITableViewDataSource, UITableViewDelegate {
 
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
         switch mode {
+        case .keyResults:    return 80
         case .conversations: return 80
         case .files:         return filesShowStatusRow ? UITableView.automaticDimension : 44
         case .skills:        return skillsShowStatusRow ? UITableView.automaticDimension : 60
@@ -1139,6 +1200,7 @@ extension SideDrawerViewController: UITableViewDataSource, UITableViewDelegate {
     func tableView(_ tableView: UITableView, estimatedHeightForRowAt indexPath: IndexPath) -> CGFloat {
         // Only the status row uses self-sizing; everything else is fixed.
         switch mode {
+        case .keyResults:    return 80
         case .conversations: return 80
         case .files:         return filesShowStatusRow ? 88 : 44
         case .skills:        return skillsShowStatusRow ? 88 : 60
@@ -1149,7 +1211,21 @@ extension SideDrawerViewController: UITableViewDataSource, UITableViewDelegate {
         // Swipe-to-delete only applies to conversations — file destructive
         // actions stay in the Files app where the user already has a familiar
         // confirmation flow.
-        guard mode == .conversations else { return nil }
+        guard mode == .conversations || mode == .keyResults else { return nil }
+        guard mode == .conversations else {
+            // Swipe-to-delete for Key Results
+            let deleteAction = UIContextualAction(style: .destructive, title: "Delete") { [weak self] (action, view, completionHandler) in
+                guard let self = self else { completionHandler(false); return }
+                let kr = self.keyResults[indexPath.row]
+                KeyResultStore.shared.delete(id: kr.id)
+                self.keyResults.remove(at: indexPath.row)
+                tableView.deleteRows(at: [indexPath], with: .fade)
+                completionHandler(true)
+            }
+            deleteAction.backgroundColor = .systemRed
+            deleteAction.image = UIImage(systemName: "trash")
+            return UISwipeActionsConfiguration(actions: [deleteAction])
+        }
         let deleteAction = UIContextualAction(style: .destructive, title: "Delete") { [weak self] (action, view, completionHandler) in
             self?.deleteConversation(at: indexPath)
             completionHandler(true)
