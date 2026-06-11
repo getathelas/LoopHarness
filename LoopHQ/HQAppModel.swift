@@ -9,7 +9,7 @@ import simd
 @Observable
 final class HQAppModel {
 
-    static let immersiveSpaceID = "hq.park"
+    static let immersiveSpaceID = "hq.campanile"
 
     let world = HQWorld()
     let player = HQPlayer()
@@ -35,24 +35,22 @@ final class HQAppModel {
 
     // MARK: Lifecycle
 
-    func enteredPark() async {
+    func enteredWorld() async {
         isImmersed = true
         player.resetToSpawn()
         await controls.start()
         // Build in an app-owned task, never the immersive view's `.task`:
         // SwiftUI cancels that task whenever the view is torn down (including
-        // transient teardowns while the space opens), and the cancellation
-        // propagates into URLSession, killing in-flight tile downloads with
-        // NSURLError -999. The world outlives the view, so its build must too.
+        // transient teardowns while the space opens). The world outlives the
+        // view, so its build must too.
         if worldBuildTask == nil {
-            let key = googleTilesKey
             worldBuildTask = Task { [world] in
-                await world.build(googleTilesKey: key)
+                await world.build()
             }
         }
     }
 
-    func leftPark() {
+    func leftWorld() {
         isImmersed = false
         controls.stop()
     }
@@ -63,7 +61,7 @@ final class HQAppModel {
         let dt = min(dt, 1.0 / 30.0) // Don't lurch after a hitch.
         player.update(
             dt: dt,
-            intent: controls.intent,
+            intent: controls.consumeIntent(),
             headPosition: controls.headPosition(),
             world: world
         )
@@ -102,11 +100,12 @@ final class HQAppModel {
         testAvatarEnabled.toggle()
     }
 
-    /// Ambles a small loop near spawn so there's someone to walk up to.
+    /// Ambles a small loop on the lawn near spawn so there's someone to
+    /// walk up to.
     private func nextTestAvatarPose(dt: Float) -> HQRemotePlayer {
         testAvatarPhase += dt * 0.35
         let radius: Float = 4
-        let position = SIMD3(sin(testAvatarPhase) * radius, 0, cos(testAvatarPhase) * radius - 6)
+        let position = SIMD3(sin(testAvatarPhase) * radius + 8, 0, cos(testAvatarPhase) * radius + 16)
         let heading = testAvatarPhase + .pi / 2
         return HQRemotePlayer(
             id: testAvatarID,
@@ -115,22 +114,5 @@ final class HQAppModel {
             yaw: heading,
             lastSeen: Date()
         )
-    }
-
-    // MARK: Configuration
-
-    /// Google Maps Tiles API key: runtime override (set in the lobby) wins,
-    /// then the build-time value injected from Secrets.xcconfig via
-    /// Info.plist. Nil → satellite-imagery fallback world.
-    var googleTilesKey: String? {
-        if let override = UserDefaults.standard.string(forKey: "hq.googleTilesKey"),
-           !override.isEmpty {
-            return override
-        }
-        if let baked = Bundle.main.object(forInfoDictionaryKey: "GoogleTilesAPIKey") as? String,
-           !baked.isEmpty, !baked.hasPrefix("$(") {
-            return baked
-        }
-        return nil
     }
 }

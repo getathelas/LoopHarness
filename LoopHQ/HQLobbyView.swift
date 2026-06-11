@@ -1,17 +1,14 @@
 import GroupActivities
 import SwiftUI
 
-/// The launcher window: enter the park, start SharePlay, and (mainly for the
-/// simulator, where hand tracking doesn't exist) a pair of on-screen
-/// joysticks that mirror the pinch-drag controls. The window stays visible
+/// The launcher window: enter the world, comfort settings, SharePlay, and
+/// (mainly for the simulator, where hand tracking doesn't exist) a pair of
+/// on-screen pads that mirror the hand controls. The window stays visible
 /// inside the immersive space.
 struct HQLobbyView: View {
     @Environment(HQAppModel.self) private var model
     @Environment(\.openImmersiveSpace) private var openImmersiveSpace
     @Environment(\.dismissImmersiveSpace) private var dismissImmersiveSpace
-
-    @State private var tilesKeyDraft =
-        UserDefaults.standard.string(forKey: "hq.googleTilesKey") ?? ""
 
     var body: some View {
         @Bindable var multiplayer = model.multiplayer
@@ -20,7 +17,7 @@ struct HQLobbyView: View {
             VStack(spacing: 4) {
                 Text("Loop HQ")
                     .font(.extraLargeTitle2)
-                Text("Salesforce Park · San Francisco")
+                Text("The Campanile · UC Berkeley")
                     .font(.title3)
                     .foregroundStyle(.secondary)
             }
@@ -31,27 +28,10 @@ struct HQLobbyView: View {
                         .textFieldStyle(.roundedBorder)
                         .frame(maxWidth: 280)
 
-                    if model.googleTilesKey == nil {
-                        VStack(spacing: 6) {
-                            Text("No Google Maps Tiles API key — you'll get flat satellite imagery instead of photorealistic 3D.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .multilineTextAlignment(.center)
-                            TextField("Google Maps Tiles API key (optional)", text: $tilesKeyDraft)
-                                .textFieldStyle(.roundedBorder)
-                                .autocorrectionDisabled()
-                                .textInputAutocapitalization(.never)
-                                .frame(maxWidth: 360)
-                                .onSubmit {
-                                    UserDefaults.standard.set(tilesKeyDraft, forKey: "hq.googleTilesKey")
-                                }
-                        }
-                    }
-
                     Button {
                         Task { await openImmersiveSpace(id: HQAppModel.immersiveSpaceID) }
                     } label: {
-                        Label("Enter the Park", systemImage: "figure.walk")
+                        Label("Visit the Campanile", systemImage: "figure.walk")
                             .font(.title3)
                             .padding(.horizontal, 8)
                     }
@@ -60,11 +40,12 @@ struct HQLobbyView: View {
             } else {
                 statusSection
                 controlsSection
-                Button("Leave the Park", role: .destructive) {
+                Button("Leave", role: .destructive) {
                     Task { await dismissImmersiveSpace() }
                 }
             }
 
+            comfortSection
             multiplayerSection
         }
         .padding(28)
@@ -77,7 +58,7 @@ struct HQLobbyView: View {
         Group {
             switch model.world.status {
             case .idle, .building:
-                Label("Building Salesforce Park…", systemImage: "globe.americas")
+                Label("Building the Campanile…", systemImage: "building.columns")
             case .ready(let detail):
                 Label(detail, systemImage: "checkmark.circle")
             case .failed(let message):
@@ -92,9 +73,10 @@ struct HQLobbyView: View {
     private var controlsSection: some View {
         VStack(spacing: 10) {
             if model.controls.handTrackingActive {
-                Text("Pinch + drag: left hand walks, right hand looks")
+                Text("Left pinch + drag walks · turn your head to look · right pinch + drag tilts the view")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
             } else {
                 Text("Hand tracking unavailable — use the pads below")
                     .font(.caption)
@@ -102,12 +84,33 @@ struct HQLobbyView: View {
             }
             HStack(spacing: 60) {
                 HQJoystickPad(label: "Walk") { vector in
-                    model.controls.virtualIntent.move = vector
+                    model.controls.virtualMove = vector
+                } onEnded: {
+                    model.controls.virtualMove = .zero
                 }
-                HQJoystickPad(label: "Look") { vector in
-                    model.controls.virtualIntent.look = vector
+                HQJoystickPad(label: "Drag look") { vector in
+                    model.controls.padLookChanged(vector)
+                } onEnded: {
+                    model.controls.padLookEnded()
                 }
             }
+        }
+    }
+
+    /// Pitch comfort: continuous 1:1 drag, or discrete snap tilts.
+    private var comfortSection: some View {
+        @Bindable var controls = model.controls
+        return VStack(spacing: 6) {
+            Picker("Pitch", selection: $controls.pitchComfort) {
+                ForEach(HQPitchComfort.allCases) { mode in
+                    Text(mode.label).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 360)
+            Text("How vertical drags tilt the view — snap if smooth tilting ever feels off")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
         }
     }
 
@@ -116,13 +119,13 @@ struct HQLobbyView: View {
             Divider()
             switch model.multiplayer.state {
             case .idle:
-                Label("Start a FaceTime call, then share the park", systemImage: "shareplay")
+                Label("Start a FaceTime call, then share the plaza", systemImage: "shareplay")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             case .waiting:
                 Label("Joining session…", systemImage: "shareplay")
             case .joined(let count):
-                Label("\(count) in the park", systemImage: "person.2.fill")
+                Label("\(count) at the tower", systemImage: "person.2.fill")
             }
 
             HStack(spacing: 16) {
@@ -152,12 +155,14 @@ struct HQLobbyView: View {
     }
 }
 
-/// A drag-anywhere joystick pad: deflection is the drag vector from the
-/// gesture's start, saturating at the pad radius. Mirrors the hand-stick
-/// mapping (up = forward / look up).
+/// A drag-anywhere pad: deflection is the drag vector from the gesture's
+/// start, saturating at the pad radius. The walk pad treats it as a stick
+/// (release = stop); the look pad consumes position *changes*, mirroring
+/// pinch-drag (release = commit).
 struct HQJoystickPad: View {
     let label: String
     let onChange: (SIMD2<Float>) -> Void
+    let onEnded: () -> Void
 
     @State private var knobOffset = CGSize.zero
     private let radius: CGFloat = 56
@@ -185,12 +190,12 @@ struct HQJoystickPad: View {
                             dy *= radius / length
                         }
                         knobOffset = CGSize(width: dx, height: dy)
-                        // Screen-up is negative height; sticks treat up as +.
+                        // Screen-up is negative height; pads treat up as +.
                         onChange(SIMD2(Float(dx / radius), Float(-dy / radius)))
                     }
                     .onEnded { _ in
                         knobOffset = .zero
-                        onChange(.zero)
+                        onEnded()
                     }
             )
             Text(label)

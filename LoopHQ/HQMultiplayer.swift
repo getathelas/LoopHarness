@@ -9,16 +9,17 @@ struct LoopHQActivity: GroupActivity {
 
     var metadata: GroupActivityMetadata {
         var metadata = GroupActivityMetadata()
-        metadata.title = "Loop HQ — Salesforce Park"
-        metadata.subtitle = "Walk the park together"
+        metadata.title = "Loop HQ — The Campanile"
+        metadata.subtitle = "Meet under the tower"
         metadata.type = .generic
         return metadata
     }
 }
 
 /// One participant's pose, broadcast a few times a second. Everything is in
-/// the shared park-local frame (`HQGeo`), so a position means the same spot
-/// in the park for every participant regardless of their physical room.
+/// the shared world frame (deterministic voxel generation guarantees every
+/// device built the same plaza), so a position means the same spot for every
+/// participant regardless of their physical room.
 struct HQPoseMessage: Codable {
     var name: String
     var position: SIMD3<Float>

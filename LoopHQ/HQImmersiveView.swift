@@ -2,7 +2,7 @@ import RealityKit
 import SwiftUI
 
 /// The immersive scene: hosts the world root and drives the per-frame loop.
-struct ParkImmersiveView: View {
+struct HQImmersiveView: View {
     @Environment(HQAppModel.self) private var model
     @State private var updateSubscription: EventSubscription?
 
@@ -14,12 +14,12 @@ struct ParkImmersiveView: View {
             }
         }
         .task {
-            await model.enteredPark()
+            await model.enteredWorld()
         }
         .onDisappear {
             updateSubscription?.cancel()
             updateSubscription = nil
-            model.leftPark()
+            model.leftWorld()
         }
     }
 }

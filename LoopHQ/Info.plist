@@ -3,16 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>NSHandsTrackingUsageDescription</key>
-	<string>Loop HQ uses your hand positions as joysticks: pinch and drag to walk around the park and look around.</string>
-	<!--
-	  Build-time Google Maps Tiles API key, resolved from Secrets.xcconfig
-	  (GOOGLE_MAPS_TILES_API_KEY). Optional: without it the app falls back
-	  to flat satellite imagery, and a key can also be entered at runtime in
-	  the lobby. The $(VAR) shape survives when unset and is treated as
-	  absent by HQAppModel.
-	-->
-	<key>GoogleTilesAPIKey</key>
-	<string>$(GOOGLE_MAPS_TILES_API_KEY)</string>
+	<string>Loop HQ uses your hands for locomotion: pinch and drag with the left hand to walk, and with the right hand to tilt your view.</string>
 	<!--
 	  Unlike LoopVision (volumetric-only), Loop HQ launches into a regular
 	  window (the lobby) and opens the immersive space from there, so the

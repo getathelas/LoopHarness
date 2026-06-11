@@ -16,8 +16,6 @@
 		DA17C13000000000000000B6 /* NIOSSH in Frameworks */ = {isa = PBXBuildFile; productRef = DA17C13000000000000000A6 /* NIOSSH */; };
 		DA17C14000000000000000D4 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = DA17C14000000000000000C4 /* SwiftTerm */; };
 		DA17C15000000000000000F5 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = DA17C15000000000000000E5 /* Sparkle */; };
-		DA17C17000000000000000B4 /* GLTFKit2 in Frameworks */ = {isa = PBXBuildFile; productRef = DA17C17000000000000000A4 /* GLTFKit2 */; };
-		DA17C18000000000000000B4 /* DracoSwift in Frameworks */ = {isa = PBXBuildFile; productRef = DA17C18000000000000000A4 /* DracoSwift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -124,13 +122,6 @@
 			);
 			target = 6C00020A00000000DEADBEEF /* LoopVision */;
 		};
-		6D00040600000000DEADBEEF /* Exceptions for "LoopHQ" folder in "LoopHQ" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-			);
-			target = 6D00040A00000000DEADBEEF /* LoopHQ */;
-		};
 		6C00020700000000DEADBEEF /* Exceptions for "LoopIOS" folder in "LoopVision" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -169,6 +160,13 @@
 				TriggerIntent.swift,
 			);
 			target = 6C00020A00000000DEADBEEF /* LoopVision */;
+		};
+		6D00040600000000DEADBEEF /* Exceptions for "LoopHQ" folder in "LoopHQ" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 6D00040A00000000DEADBEEF /* LoopHQ */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -258,8 +256,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				DA17C17000000000000000B4 /* GLTFKit2 in Frameworks */,
-				DA17C18000000000000000B4 /* DracoSwift in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -411,8 +407,6 @@
 			);
 			name = LoopHQ;
 			packageProductDependencies = (
-				DA17C17000000000000000A4 /* GLTFKit2 */,
-				DA17C18000000000000000A4 /* DracoSwift */,
 			);
 			productName = LoopHQ;
 			productReference = 6D00040100000000DEADBEEF /* LoopHQ.app */;
@@ -459,8 +453,6 @@
 				DA17C13000000000000000A1 /* XCRemoteSwiftPackageReference "swift-nio-ssh" */,
 				DA17C14000000000000000C1 /* XCRemoteSwiftPackageReference "SwiftTerm" */,
 				DA17C15000000000000000E1 /* XCRemoteSwiftPackageReference "Sparkle" */,
-				DA17C17000000000000000A1 /* XCRemoteSwiftPackageReference "GLTFKit2" */,
-				DA17C18000000000000000A1 /* XCRemoteSwiftPackageReference "DracoSwift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 6A0903842CD69D9500E70D46 /* Products */;
@@ -1140,22 +1132,6 @@
 				minimumVersion = 2.6.0;
 			};
 		};
-		DA17C17000000000000000A1 /* XCRemoteSwiftPackageReference "GLTFKit2" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/warrenm/GLTFKit2";
-			requirement = {
-				kind = exactVersion;
-				version = 0.5.15;
-			};
-		};
-		DA17C18000000000000000A1 /* XCRemoteSwiftPackageReference "DracoSwift" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/warrenm/DracoSwift";
-			requirement = {
-				kind = exactVersion;
-				version = 1.5.7;
-			};
-		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1198,16 +1174,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = DA17C15000000000000000E1 /* XCRemoteSwiftPackageReference "Sparkle" */;
 			productName = Sparkle;
-		};
-		DA17C17000000000000000A4 /* GLTFKit2 */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = DA17C17000000000000000A1 /* XCRemoteSwiftPackageReference "GLTFKit2" */;
-			productName = GLTFKit2;
-		};
-		DA17C18000000000000000A4 /* DracoSwift */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = DA17C18000000000000000A1 /* XCRemoteSwiftPackageReference "DracoSwift" */;
-			productName = DracoSwift;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
