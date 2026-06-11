@@ -37,6 +37,9 @@ final class HQWorld {
 
     private(set) var status: Status = .idle
     private(set) var tilesLoaded = 0
+    /// Finest geometric error (m) among loaded tiles near the deck — the
+    /// quickest way to tell whether we actually reached Google's max LOD.
+    private(set) var finestGeometricError = Double.infinity
 
     private let parkContent = Entity()
     private let tilesRoot = Entity()
@@ -211,7 +214,9 @@ final class HQWorld {
 
         if tilesLoaded > 0 {
             satellitePlane?.isEnabled = false
-            status = .ready(detail: "Photorealistic Salesforce Park — \(tilesLoaded) tiles")
+            let finest = finestGeometricError.isFinite
+                ? String(format: " (finest LOD ≈ %.2f m)", finestGeometricError) : ""
+            status = .ready(detail: "Photorealistic Salesforce Park — \(tilesLoaded) tiles\(finest)")
         } else {
             status = .failed("No tiles loaded — check the Maps Tiles API key. Showing satellite imagery.")
         }
@@ -227,6 +232,7 @@ final class HQWorld {
             try Task.checkCancellation()
             placeTile(entity, ecefRootTransform: rootTransform)
             tilesLoaded += 1
+            finestGeometricError = min(finestGeometricError, tile.geometricError)
             if case .ready = status {
                 status = .ready(detail: "Streaming photorealistic tiles… \(tilesLoaded)")
             }

@@ -38,11 +38,12 @@ struct TileStreamer {
 
     /// Distance-based level of detail: the geometric error (m) we'll accept
     /// for a node whose bounding volume is `distance` metres from the park
-    /// anchor. Full photogrammetry resolution on and around the deck (the
-    /// finest Google tiles are ~1 m GE), coarsening smoothly with distance so
-    /// the skyline stays cheap. The divisor is the quality/memory knob.
+    /// anchor. Within ~75 m the target sits below Google's finest published
+    /// level (leaves bottom out around 0.25–0.5 m GE), forcing descent to the
+    /// true leaves; beyond that it grows linearly so the skyline stays cheap.
+    /// The 70/30 constants are the quality/memory knobs.
     static func targetGeometricError(atDistance distance: Double) -> Double {
-        min(max(distance / 35.0, 1.0), 20.0)
+        min(max(0.2, (distance - 70.0) / 30.0), 20.0)
     }
 
     private let baseURL = URL(string: "https://tile.googleapis.com")!
@@ -80,16 +81,27 @@ struct TileStreamer {
         let rootTileset = try JSONDecoder().decode(Tileset.self, from: rootData)
 
         var count = 0
-        var stack: [Node] = [rootTileset.root]
-        while let node = stack.popLast() {
+        // Nearest-first traversal (linear-scan priority queue; the frontier
+        // stays small): when the tile budget runs out, what gets dropped is
+        // distant skyline, never the deck underfoot.
+        var frontier: [(node: Node, distance: Double)] = [
+            (rootTileset.root, horizontalDistance(of: rootTileset.root.boundingVolume))
+        ]
+        while !frontier.isEmpty {
             if count >= maxTiles { break }
+            var nearest = 0
+            for index in frontier.indices where frontier[index].distance < frontier[nearest].distance {
+                nearest = index
+            }
+            let (node, distance) = frontier.remove(at: nearest)
             guard intersectsPark(node.boundingVolume) else { continue }
 
             let children = node.children ?? []
-            let distance = horizontalDistance(of: node.boundingVolume)
             if node.geometricError > Self.targetGeometricError(atDistance: distance) {
                 if !children.isEmpty {
-                    stack.append(contentsOf: children)
+                    frontier.append(contentsOf: children.map {
+                        ($0, horizontalDistance(of: $0.boundingVolume))
+                    })
                     continue
                 }
                 // Leaf-with-content whose content is a nested tileset.
@@ -98,7 +110,7 @@ struct TileStreamer {
                     let data = try await fetch(uri: uri, sessionToken: &token)
                     sessionToken = token ?? sessionToken
                     let nested = try JSONDecoder().decode(Tileset.self, from: data)
-                    stack.append(nested.root)
+                    frontier.append((nested.root, horizontalDistance(of: nested.root.boundingVolume)))
                     continue
                 }
             }
@@ -110,7 +122,9 @@ struct TileStreamer {
                 }
             } else if !children.isEmpty {
                 // No renderable content at this level; keep descending.
-                stack.append(contentsOf: children)
+                frontier.append(contentsOf: children.map {
+                    ($0, horizontalDistance(of: $0.boundingVolume))
+                })
             }
         }
         return count
