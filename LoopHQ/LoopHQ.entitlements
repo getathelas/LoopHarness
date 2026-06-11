@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Loop HQ entitlements:
+	   - GroupActivities for SharePlay-based multiplayer.
+	   - ARKit hand-tracking for pinch locomotion.
+	-->
+	<key>com.apple.developer.group-session</key>
+	<true/>
+	<key>com.apple.developer.arkit</key>
+	<true/>
+</dict>
+</plist>

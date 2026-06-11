@@ -48,6 +48,7 @@
 		6A0903832CD69D9500E70D46 /* Loop.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Loop.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6B00010100000000DEADBEEF /* LoopMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LoopMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6C00020100000000DEADBEEF /* LoopVision.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LoopVision.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		6D00030100000000DEADBEEF /* LoopHQ.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LoopHQ.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -160,6 +161,13 @@
 			);
 			target = 6C00020A00000000DEADBEEF /* LoopVision */;
 		};
+		6D00030600000000DEADBEEF /* Exceptions for "LoopHQ" folder in "LoopHQ" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 6D00030A00000000DEADBEEF /* LoopHQ */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -195,6 +203,14 @@
 				6C00020600000000DEADBEEF /* Exceptions for "LoopVision" folder in "LoopVision" target */,
 			);
 			path = LoopVision;
+			sourceTree = "<group>";
+		};
+		6D00030500000000DEADBEEF /* LoopHQ */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				6D00030600000000DEADBEEF /* Exceptions for "LoopHQ" folder in "LoopHQ" target */,
+			);
+			path = LoopHQ;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -236,6 +252,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		6D00030300000000DEADBEEF /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -247,6 +270,7 @@
 				6B00010500000000DEADBEEF /* LoopMac */,
 				5EE7AAD32FB7A82B00062171 /* LoopShare */,
 				6C00020500000000DEADBEEF /* LoopVision */,
+				6D00030500000000DEADBEEF /* LoopHQ */,
 				6A0903842CD69D9500E70D46 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -258,6 +282,7 @@
 				6B00010100000000DEADBEEF /* LoopMac.app */,
 				5EE7AAD22FB7A82B00062171 /* LoopShare.appex */,
 				6C00020100000000DEADBEEF /* LoopVision.app */,
+				6D00030100000000DEADBEEF /* LoopHQ.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -365,6 +390,28 @@
 			productReference = 6C00020100000000DEADBEEF /* LoopVision.app */;
 			productType = "com.apple.product-type.application";
 		};
+		6D00030A00000000DEADBEEF /* LoopHQ */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6D00030800000000DEADBEEF /* Build configuration list for PBXNativeTarget "LoopHQ" */;
+			buildPhases = (
+				6D00030200000000DEADBEEF /* Sources */,
+				6D00030300000000DEADBEEF /* Frameworks */,
+				6D00030400000000DEADBEEF /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				6D00030500000000DEADBEEF /* LoopHQ */,
+			);
+			name = LoopHQ;
+			packageProductDependencies = (
+			);
+			productName = LoopHQ;
+			productReference = 6D00030100000000DEADBEEF /* LoopHQ.app */;
+			productType = "com.apple.product-type.application";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -385,6 +432,9 @@
 						CreatedOnToolsVersion = 16.0;
 					};
 					6C00020A00000000DEADBEEF = {
+						CreatedOnToolsVersion = 26.1;
+					};
+					6D00030A00000000DEADBEEF = {
 						CreatedOnToolsVersion = 26.1;
 					};
 				};
@@ -413,6 +463,7 @@
 				6B00010A00000000DEADBEEF /* LoopMac */,
 				5EE7AAD12FB7A82B00062171 /* LoopShare */,
 				6C00020A00000000DEADBEEF /* LoopVision */,
+				6D00030A00000000DEADBEEF /* LoopHQ */,
 			);
 		};
 /* End PBXProject section */
@@ -446,6 +497,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		6D00030400000000DEADBEEF /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -471,6 +529,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		6C00020200000000DEADBEEF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		6D00030200000000DEADBEEF /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -921,6 +986,60 @@
 			};
 			name = Release;
 		};
+		6D00030900000000DEADBEEF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = LoopHQ/LoopHQ.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = LoopHQ/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Loop HQ";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bhat.intel.loophq;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = xros;
+				SUPPORTED_PLATFORMS = "xros xrsimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 7;
+				XROS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Debug;
+		};
+		6D00030B00000000DEADBEEF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = LoopHQ/LoopHQ.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = LoopHQ/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Loop HQ";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bhat.intel.loophq;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = xros;
+				SUPPORTED_PLATFORMS = "xros xrsimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 7;
+				XROS_DEPLOYMENT_TARGET = 26.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -965,6 +1084,15 @@
 			buildConfigurations = (
 				6C00020900000000DEADBEEF /* Debug */,
 				6C00020B00000000DEADBEEF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		6D00030800000000DEADBEEF /* Build configuration list for PBXNativeTarget "LoopHQ" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6D00030900000000DEADBEEF /* Debug */,
+				6D00030B00000000DEADBEEF /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

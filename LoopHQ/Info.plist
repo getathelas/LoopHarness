@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Loop HQ — a multiplayer, walkable photoreal world on visionOS.
+	  This plist covers the immersive-space scene role, hand-tracking,
+	  and the GroupActivities capability for SharePlay multiplayer.
+	-->
+
+	<!-- Hand tracking is required for pinch-to-move / pinch-to-look. -->
+	<key>NSHandsTrackingUsageDescription</key>
+	<string>Loop HQ tracks your hands to let you walk and look around the world by pinching and dragging.</string>
+
+	<!-- World sensing for anchoring the terrain to the real-world floor. -->
+	<key>NSWorldSensingUsageDescription</key>
+	<string>Loop HQ uses world sensing to align the virtual terrain with your physical space.</string>
+
+	<!--
+	  Scene manifest: the app uses a SwiftUI-managed ImmersiveSpace, so
+	  we declare the immersive-application role as the preferred default.
+	  The lobby WindowGroup coexists because SwiftUI manages scenes; no
+	  UISceneConfigurations are needed.
+	-->
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationPreferredDefaultSceneSessionRole</key>
+		<string>UIWindowSceneSessionRoleApplication</string>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<true/>
+		<key>UISceneConfigurations</key>
+		<dict/>
+	</dict>
+</dict>
+</plist>
