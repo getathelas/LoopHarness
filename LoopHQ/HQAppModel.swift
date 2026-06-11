@@ -20,6 +20,7 @@ final class HQAppModel {
 
     private let avatarsRoot = Entity()
     private var avatarEntities: [UUID: HQAvatarEntity] = [:]
+    private var worldBuildTask: Task<Void, Never>?
 
     /// Demo stand-in for a second participant (simulator has no SharePlay).
     private(set) var testAvatarEnabled = false
@@ -38,7 +39,17 @@ final class HQAppModel {
         isImmersed = true
         player.resetToSpawn()
         await controls.start()
-        await world.build(googleTilesKey: googleTilesKey)
+        // Build in an app-owned task, never the immersive view's `.task`:
+        // SwiftUI cancels that task whenever the view is torn down (including
+        // transient teardowns while the space opens), and the cancellation
+        // propagates into URLSession, killing in-flight tile downloads with
+        // NSURLError -999. The world outlives the view, so its build must too.
+        if worldBuildTask == nil {
+            let key = googleTilesKey
+            worldBuildTask = Task { [world] in
+                await world.build(googleTilesKey: key)
+            }
+        }
     }
 
     func leftPark() {

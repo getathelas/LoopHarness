@@ -216,7 +216,7 @@ final class HQWorld {
         }
     }
 
-    private func loadTile(_ tile: TileStreamer.Tile, streamer: TileStreamer) async {
+    private func loadTile(_ tile: TileStreamer.Tile, streamer: TileStreamer, attempt: Int = 0) async {
         do {
             let fileURL = try await streamer.download(tile)
             defer { try? FileManager.default.removeItem(at: fileURL) }
@@ -230,6 +230,10 @@ final class HQWorld {
                 status = .ready(detail: "Streaming photorealistic tiles… \(tilesLoaded)")
             }
         } catch {
+            // One retry for transient network hiccups; cancellation is final.
+            if attempt == 0, !Task.isCancelled {
+                return await loadTile(tile, streamer: streamer, attempt: 1)
+            }
             print("HQWorld: tile load failed: \(error)")
         }
     }
