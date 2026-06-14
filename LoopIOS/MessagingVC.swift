@@ -662,6 +662,14 @@ When the user asks how you work, what you can do, or how you're built, read `ABO
             object: nil
         )
 
+        // Card feed: show a pill alert whenever a new card is generated.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleCardAdded(_:)),
+            name: CardStore.cardAddedNotification,
+            object: nil
+        )
+
         // Pick up any attachments the SceneDelegate stashed during cold-start
         // before MessagingVC had loaded. Each call to `stageIncomingAttachment`
         // overwrites the chip, so the last one wins as the visible staging —
@@ -4934,6 +4942,19 @@ extension MessagingVC: ActionButtonReminderBarDelegate {
 
     func actionButtonReminderBarDismissed() {
         // The bar refreshes itself on dismiss tap; nothing extra to do here.
+    }
+
+    // MARK: - Card Feed Pill Alert
+
+    @objc private func handleCardAdded(_ notification: Notification) {
+        guard let card = notification.object as? Card else { return }
+        CardPillAlert.show(in: self, cardId: card.id) { [weak self] cardId in
+            // Navigate to Feed tab in the side drawer and scroll to card
+            guard let self = self else { return }
+            if let drawer = self.children.first(where: { $0 is SideDrawerViewController }) as? SideDrawerViewController {
+                drawer.selectTab("feed")
+            }
+        }
     }
 }
 

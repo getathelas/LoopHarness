@@ -21,7 +21,7 @@ class SideDrawerViewController: UIViewController {
     private let containerView = UIView()
     private let navigationBar = UINavigationBar()
     private let newNavigationItem = UINavigationItem()
-    private let segmentedControl = UISegmentedControl(items: ["Conversations", "Files", "Skills"])
+    private let segmentedControl = UISegmentedControl(items: ["Feed", "Conversations", "Files", "Skills"])
 
     /// UserDefaults key for the last-selected segment. Restored on setup so the
     /// drawer reopens on whatever tab the user left it on.
@@ -35,11 +35,12 @@ class SideDrawerViewController: UIViewController {
     /// for both modes — the cell types, row heights, and data sources all
     /// branch on this flag rather than swapping the table out.
     private enum Mode {
+        case feed
         case conversations
         case files
         case skills
     }
-    private var mode: Mode = .conversations
+    private var mode: Mode = .feed
 
     /// Optional override applied during `setupUI()` before the persisted tab
     /// would otherwise be restored. NavigationSkill sets this when the model
@@ -50,8 +51,9 @@ class SideDrawerViewController: UIViewController {
     /// path and the value-changed handler can't drift apart.
     private func mode(forSegmentIndex index: Int) -> Mode {
         switch index {
-        case 1:  return .files
-        case 2:  return .skills
+        case 0:  return .feed
+        case 2:  return .files
+        case 3:  return .skills
         default: return .conversations
         }
     }
@@ -61,9 +63,10 @@ class SideDrawerViewController: UIViewController {
     /// silently fall back to the restored selection.
     private static func segmentIndex(forTab tab: String) -> Int? {
         switch tab.lowercased() {
-        case "conversations", "history": return 0
-        case "files", "workspace":       return 1
-        case "skills":                   return 2
+        case "feed":                       return 0
+        case "conversations", "history": return 1
+        case "files", "workspace":       return 2
+        case "skills":                   return 3
         default:                         return nil
         }
     }
@@ -185,6 +188,7 @@ class SideDrawerViewController: UIViewController {
     private var overlayAlphaConstraint: NSLayoutConstraint!
     
     // MARK: - Data
+    private var feedCards: [Card] = []
     private var conversations: [Conversation] = []
     private let conversationManager = SimpleConversationManager.shared
     private var currentConversationId: String?
@@ -407,6 +411,7 @@ class SideDrawerViewController: UIViewController {
         fileLoadState = .idle
         skillLoadState = .idle
         switch mode {
+        case .feed:          rebuildFeedRows(); tableView.reloadData()
         case .conversations: loadConversations()
         case .files:         rebuildFileRows(); tableView.reloadData()
         case .skills:        rebuildSkillRows(); tableView.reloadData()
@@ -616,10 +621,16 @@ class SideDrawerViewController: UIViewController {
     /// separately (Core Data) so they need no prep here.
     private func rebuildRows(for mode: Mode) {
         switch mode {
+        case .feed:          rebuildFeedRows()
         case .conversations: break
         case .files:         rebuildFileRows()
         case .skills:        rebuildSkillRows()
         }
+    }
+
+    /// Reload feed cards from the store.
+    private func rebuildFeedRows() {
+        feedCards = CardStore.shared.feedCards
     }
 
     // MARK: - Skills
@@ -918,6 +929,7 @@ extension SideDrawerViewController: UITableViewDataSource, UITableViewDelegate {
 
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         switch mode {
+        case .feed:          return feedCards.count
         case .conversations: return conversations.count
         case .files:         return filesShowStatusRow ? 1 : fileRows.count
         case .skills:        return skillsShowStatusRow ? 1 : skillRows.count
@@ -926,6 +938,25 @@ extension SideDrawerViewController: UITableViewDataSource, UITableViewDelegate {
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         switch mode {
+        case .feed:
+            let cell = tableView.dequeueReusableCell(withIdentifier: "FeedCell") ?? UITableViewCell(style: .subtitle, reuseIdentifier: "FeedCell")
+            let card = feedCards[indexPath.row]
+            var config = cell.defaultContentConfiguration()
+            config.text = card.title
+            config.textProperties.font = .systemFont(ofSize: 16, weight: .semibold)
+            config.secondaryText = "\(card.kind.rawValue) · \(card.state.rawValue)"
+            config.secondaryTextProperties.font = .systemFont(ofSize: 13)
+            config.secondaryTextProperties.color = .secondaryLabel
+            // State color indicator
+            switch card.state {
+            case .new:  config.image = UIImage(systemName: "sparkles")
+            case .kept: config.image = UIImage(systemName: "heart.fill")
+            case .archived: config.image = UIImage(systemName: "archivebox")
+            }
+            config.imageProperties.tintColor = card.state == .new ? .systemBlue : .systemGreen
+            cell.contentConfiguration = config
+            cell.backgroundColor = .clear
+            return cell
         case .conversations:
             let cell = tableView.dequeueReusableCell(withIdentifier: "ConversationCell", for: indexPath) as! ConversationCell
             let conversation = conversations[indexPath.row]
@@ -979,6 +1010,11 @@ extension SideDrawerViewController: UITableViewDataSource, UITableViewDelegate {
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
         switch mode {
+        case .feed:
+            let card = feedCards[indexPath.row]
+            let detailVC = CardDetailViewController(card: card)
+            let nav = UINavigationController(rootViewController: detailVC)
+            present(nav, animated: true)
         case .conversations:
             let conversation = conversations[indexPath.row]
             delegate?.sideDrawerDidSelectConversation(conversation)
@@ -1130,6 +1166,7 @@ extension SideDrawerViewController: UITableViewDataSource, UITableViewDelegate {
 
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
         switch mode {
+        case .feed:          return 64
         case .conversations: return 80
         case .files:         return filesShowStatusRow ? UITableView.automaticDimension : 44
         case .skills:        return skillsShowStatusRow ? UITableView.automaticDimension : 60
@@ -1139,13 +1176,39 @@ extension SideDrawerViewController: UITableViewDataSource, UITableViewDelegate {
     func tableView(_ tableView: UITableView, estimatedHeightForRowAt indexPath: IndexPath) -> CGFloat {
         // Only the status row uses self-sizing; everything else is fixed.
         switch mode {
+        case .feed:          return 64
         case .conversations: return 80
         case .files:         return filesShowStatusRow ? 88 : 44
         case .skills:        return skillsShowStatusRow ? 88 : 60
         }
     }
 
+    func tableView(_ tableView: UITableView, leadingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        guard mode == .feed else { return nil }
+        let card = feedCards[indexPath.row]
+        guard card.state != .kept else { return nil }
+        let keepAction = UIContextualAction(style: .normal, title: "Keep") { [weak self] _, _, done in
+            CardStore.shared.updateState(id: card.id, state: .kept)
+            self?.rebuildFeedRows()
+            self?.tableView.reloadData()
+            done(true)
+        }
+        keepAction.backgroundColor = .systemGreen
+        return UISwipeActionsConfiguration(actions: [keepAction])
+    }
+
     func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        if mode == .feed {
+            let card = feedCards[indexPath.row]
+            let archiveAction = UIContextualAction(style: .destructive, title: "Archive") { [weak self] _, _, done in
+                CardStore.shared.updateState(id: card.id, state: .archived)
+                self?.feedCards.remove(at: indexPath.row)
+                tableView.deleteRows(at: [indexPath], with: .left)
+                done(true)
+            }
+            archiveAction.backgroundColor = .systemOrange
+            return UISwipeActionsConfiguration(actions: [archiveAction])
+        }
         // Swipe-to-delete only applies to conversations — file destructive
         // actions stay in the Files app where the user already has a familiar
         // confirmation flow.
