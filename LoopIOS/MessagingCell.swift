@@ -1636,24 +1636,83 @@ class MessagingCell: UITableViewCell {
         return container
     }
 
-    /// Build a UIStackView grid for `table`. Rows are full-width with
-    /// equal-width columns; header is bold on a tinted background; body
-    /// rows alternate fill for readability. Borders and dividers use
-    /// `.separator` so dark mode looks right out of the box.
+    /// Build a scrollable table grid for `table`. Columns are sized to fit
+    /// their content (clamped between a min and max width). When the table's
+    /// natural width exceeds the available message width, a horizontal
+    /// UIScrollView lets the user pan through. Header is bold on a tinted
+    /// background; body rows alternate fill for readability. Borders and
+    /// dividers use `.separator` so dark mode looks right out of the box.
     private func makeTableView(table: MarkdownTable) -> UIView {
-        // AdaptiveBorderView re-resolves layer.borderColor on appearance
-        // changes — UIView.backgroundColor handles that itself for dynamic
-        // UIColors, but CGColors on CALayer don't, and the border would
-        // otherwise stay frozen at whatever mode was active when the
-        // table was first built.
-        let container = AdaptiveBorderView()
-        container.translatesAutoresizingMaskIntoConstraints = false
-        container.layer.cornerRadius = 8
-        container.adaptiveBorderColor = UIColor.separator
-        container.layer.borderWidth = 0.5
-        container.layer.masksToBounds = true
-        container.backgroundColor = UIColor.secondarySystemBackground
+        // --- Column width calculation ---
+        // Measure every cell's single-line text width and pick the widest
+        // value per column (clamped to [minCol, maxCol]). This gives each
+        // column just enough room for its content without wasting space.
+        let cellPadH: CGFloat = 10  // leading + trailing inside each cell
+        let cellPadV: CGFloat = 8   // top + bottom inside each cell
+        let minCol: CGFloat = 56
+        let maxCol: CGFloat = 220
+        let baseFont = UIFont.preferredFont(forTextStyle: .subheadline)
+        let headerFont = UIFont.systemFont(ofSize: baseFont.pointSize, weight: .semibold)
 
+        var columnWidths = Array(repeating: minCol, count: table.columnCount)
+        let allRows = [table.headers] + table.rows
+        for (rowIdx, row) in allRows.enumerated() {
+            for (col, cell) in row.enumerated() where col < table.columnCount {
+                let font = (rowIdx == 0) ? headerFont : baseFont
+                let size = (cell as NSString).size(withAttributes: [.font: font])
+                let needed = ceil(size.width) + cellPadH * 2
+                columnWidths[col] = min(maxCol, max(columnWidths[col], needed))
+            }
+        }
+        let totalTableWidth = columnWidths.reduce(0, +)
+
+        // --- Outer wrapper: rounded card shell that clips the scroll view ---
+        let wrapper = AdaptiveBorderView()
+        wrapper.translatesAutoresizingMaskIntoConstraints = false
+        wrapper.clipsToBounds = true
+        wrapper.layer.cornerRadius = 10
+        wrapper.layer.cornerCurve = .continuous
+        wrapper.adaptiveBorderColor = UIColor.separator
+        wrapper.layer.borderWidth = 0.5
+        wrapper.backgroundColor = UIColor.secondarySystemBackground
+
+        let scrollView = UIScrollView()
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.showsHorizontalScrollIndicator = true
+        scrollView.showsVerticalScrollIndicator = false
+        scrollView.alwaysBounceHorizontal = false
+        wrapper.addSubview(scrollView)
+        NSLayoutConstraint.activate([
+            scrollView.topAnchor.constraint(equalTo: wrapper.topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: wrapper.bottomAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: wrapper.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: wrapper.trailingAnchor),
+        ])
+
+        // Inner content container — sized to the table's natural width.
+        let container = UIView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+        container.backgroundColor = .clear
+        scrollView.addSubview(container)
+
+        // Width: try to fill the frame (for narrow tables) but never shrink
+        // below the table's measured width (enables scrolling for wide ones).
+        let fillWidth = container.widthAnchor.constraint(
+            equalTo: scrollView.frameLayoutGuide.widthAnchor)
+        fillWidth.priority = UILayoutPriority(999)
+
+        NSLayoutConstraint.activate([
+            container.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
+            container.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
+            container.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
+            container.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
+            container.widthAnchor.constraint(greaterThanOrEqualToConstant: totalTableWidth),
+            fillWidth,
+            // Vertical height matches the scroll view frame (no vertical scroll).
+            container.heightAnchor.constraint(equalTo: scrollView.frameLayoutGuide.heightAnchor),
+        ])
+
+        // --- Build rows ---
         let vstack = UIStackView()
         vstack.translatesAutoresizingMaskIntoConstraints = false
         vstack.axis = .vertical
@@ -1671,6 +1730,7 @@ class MessagingCell: UITableViewCell {
         vstack.addArrangedSubview(
             makeTableRow(cells: table.headers,
                          alignments: table.alignments,
+                         columnWidths: columnWidths,
                          isHeader: true,
                          altBackground: false))
 
@@ -1679,11 +1739,38 @@ class MessagingCell: UITableViewCell {
             vstack.addArrangedSubview(
                 makeTableRow(cells: row,
                              alignments: table.alignments,
+                             columnWidths: columnWidths,
                              isHeader: false,
-                             altBackground: i.isMultiple(of: 2) == false))
+                             altBackground: !i.isMultiple(of: 2)))
         }
 
-        return container
+        // Compute total height by measuring each row's tallest cell,
+        // accounting for word-wrap inside the column width.
+        var totalHeight: CGFloat = 0
+        for (rowIdx, row) in allRows.enumerated() {
+            var maxCellHeight: CGFloat = 0
+            for (col, cell) in row.enumerated() where col < table.columnCount {
+                let font = (rowIdx == 0) ? headerFont : baseFont
+                let availWidth = columnWidths[col] - cellPadH * 2
+                let rect = (cell as NSString).boundingRect(
+                    with: CGSize(width: availWidth, height: .greatestFiniteMagnitude),
+                    options: [.usesLineFragmentOrigin, .usesFontLeading],
+                    attributes: [.font: font],
+                    context: nil)
+                maxCellHeight = max(maxCellHeight, ceil(rect.height) + cellPadV * 2)
+            }
+            totalHeight += maxCellHeight
+            if rowIdx > 0 { totalHeight += 0.5 }  // hairline divider
+        }
+        wrapper.heightAnchor.constraint(equalToConstant: totalHeight).isActive = true
+
+        // Flash scroll indicators after a brief delay so the user knows
+        // the table is horizontally scrollable.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            scrollView.flashScrollIndicators()
+        }
+
+        return wrapper
     }
 
     private func makeHairlineDivider() -> UIView {
@@ -1696,6 +1783,7 @@ class MessagingCell: UITableViewCell {
 
     private func makeTableRow(cells: [String],
                               alignments: [MarkdownColumnAlignment],
+                              columnWidths: [CGFloat],
                               isHeader: Bool,
                               altBackground: Bool) -> UIView {
         let row = UIView()
@@ -1712,7 +1800,7 @@ class MessagingCell: UITableViewCell {
         hstack.translatesAutoresizingMaskIntoConstraints = false
         hstack.axis = .horizontal
         hstack.alignment = .fill
-        hstack.distribution = .fillEqually
+        hstack.distribution = .fill
         hstack.spacing = 0
         row.addSubview(hstack)
         NSLayoutConstraint.activate([
@@ -1722,17 +1810,13 @@ class MessagingCell: UITableViewCell {
             hstack.trailingAnchor.constraint(equalTo: row.trailingAnchor),
         ])
 
-        // Column dividers go *inside* each non-leading cell rather than
-        // as arranged subviews of `hstack`. `.fillEqually` requires every
-        // arranged subview to share width — a 0.5pt divider sitting in
-        // the line-up either gets stretched (breaking the divider) or
-        // wins its own width (breaking equal-column sizing), producing
-        // the squished-column layout we hit before.
         for (i, cellText) in cells.enumerated() {
             let alignment = i < alignments.count ? alignments[i] : .left
+            let width = i < columnWidths.count ? columnWidths[i] : 80
             let cellView = makeTableCell(text: cellText,
                                           alignment: alignment,
                                           isHeader: isHeader,
+                                          width: width,
                                           leadingDivider: i > 0)
             hstack.addArrangedSubview(cellView)
         }
@@ -1743,17 +1827,16 @@ class MessagingCell: UITableViewCell {
     private func makeTableCell(text: String,
                                 alignment: MarkdownColumnAlignment,
                                 isHeader: Bool,
+                                width: CGFloat,
                                 leadingDivider: Bool) -> UIView {
         let container = UIView()
         container.translatesAutoresizingMaskIntoConstraints = false
+        container.widthAnchor.constraint(equalToConstant: width).isActive = true
 
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
         label.numberOfLines = 0
         label.lineBreakMode = .byWordWrapping
-        // Let `.fillEqually` win the width sizing battle. UILabel hugs
-        // its content by default, which can fight an equal-width row
-        // when one cell's text is much shorter than the rest.
         label.setContentHuggingPriority(.defaultLow, for: .horizontal)
         label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let base = UIFont.preferredFont(forTextStyle: .subheadline)
@@ -1761,11 +1844,6 @@ class MessagingCell: UITableViewCell {
             ? UIFont.systemFont(ofSize: base.pointSize, weight: .semibold)
             : base
         label.textColor = .label
-        // Inline marks (bold/italic/links) inside cells reuse the same
-        // renderer the surrounding prose uses, so styling stays consistent.
-        // UILabel ignores `textAlignment` when `attributedText` is set, so
-        // the alignment is folded into the attributed string via a
-        // paragraph style applied over the full range.
         let attributed = NSMutableAttributedString(attributedString: attributedString(from: text))
         let paragraph = NSMutableParagraphStyle()
         switch alignment {
@@ -1781,10 +1859,10 @@ class MessagingCell: UITableViewCell {
 
         container.addSubview(label)
         NSLayoutConstraint.activate([
-            label.topAnchor.constraint(equalTo: container.topAnchor, constant: 6),
-            label.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -6),
-            label.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 8),
-            label.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -8),
+            label.topAnchor.constraint(equalTo: container.topAnchor, constant: 8),
+            label.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -8),
+            label.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 10),
+            label.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -10),
         ])
 
         if leadingDivider {

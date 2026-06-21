@@ -54,12 +54,16 @@ final class CardDetailViewController: UIViewController {
         return l
     }()
 
-    private let bodyLabel: UILabel = {
-        let l = UILabel()
-        l.font = .systemFont(ofSize: 17, weight: .regular)
-        l.textColor = UIColor(white: 0.78, alpha: 1)
-        l.numberOfLines = 0
-        return l
+    /// Vertical stack holding the body content. When the body contains
+    /// markdown tables the stack receives interleaved text labels and
+    /// table grid views; otherwise a single label identical to the old
+    /// `bodyLabel`.
+    private let bodyStack: UIStackView = {
+        let s = UIStackView()
+        s.axis = .vertical
+        s.spacing = 12
+        s.alignment = .fill
+        return s
     }()
 
     private let divider: UIView = {
@@ -128,10 +132,10 @@ final class CardDetailViewController: UIViewController {
         scrollView.addSubview(contentStack)
 
         contentStack.addArrangedSubview(titleLabel)
-        contentStack.addArrangedSubview(bodyLabel)
+        contentStack.addArrangedSubview(bodyStack)
         contentStack.addArrangedSubview(divider)
         contentStack.addArrangedSubview(metaLabel)
-        contentStack.setCustomSpacing(22, after: bodyLabel)
+        contentStack.setCustomSpacing(22, after: bodyStack)
         contentStack.setCustomSpacing(14, after: divider)
 
         NSLayoutConstraint.activate([
@@ -244,17 +248,7 @@ final class CardDetailViewController: UIViewController {
                          .font: UIFont.systemFont(ofSize: 13, weight: .bold)])
 
         titleLabel.text = card.title
-
-        if card.kind == .markdown {
-            bodyLabel.attributedText = CardMarkdown.attributed(
-                card.body,
-                bodyFont: .systemFont(ofSize: 17, weight: .regular),
-                textColor: UIColor(white: 0.82, alpha: 1),
-                headingColor: .white,
-                bulletColor: accent)
-        } else {
-            bodyLabel.text = card.body
-        }
+        populateBody()
 
         var meta = "\(card.kind.rawValue.capitalized) card"
         if let source = card.source { meta += " · created from \(source)" }
@@ -263,6 +257,293 @@ final class CardDetailViewController: UIViewController {
         df.timeStyle = .none
         meta += " · \(df.string(from: card.createdAt))"
         metaLabel.text = meta
+    }
+
+    // MARK: - Body (table-aware)
+
+    private let cardBodyFont = UIFont.systemFont(ofSize: 17, weight: .regular)
+    private let cardTextColor = UIColor(white: 0.82, alpha: 1.0)
+
+    /// Parse the card body through `MarkdownSegmenter` and populate
+    /// `bodyStack` with text labels and/or styled table grids.
+    private func populateBody() {
+        bodyStack.arrangedSubviews.forEach {
+            bodyStack.removeArrangedSubview($0)
+            $0.removeFromSuperview()
+        }
+
+        let body = card.body
+        guard card.kind == .markdown else {
+            let label = makeCardBodyLabel()
+            label.text = body
+            bodyStack.addArrangedSubview(label)
+            return
+        }
+
+        let segments = MarkdownSegmenter.segments(from: body)
+        for segment in segments {
+            switch segment {
+            case .text(let prose):
+                let label = makeCardBodyLabel()
+                label.attributedText = CardMarkdown.attributed(
+                    prose,
+                    bodyFont: cardBodyFont,
+                    textColor: cardTextColor,
+                    headingColor: .white,
+                    bulletColor: accent)
+                bodyStack.addArrangedSubview(label)
+
+            case .table(let table):
+                bodyStack.addArrangedSubview(makeCardTableView(table: table))
+
+            case .codeBlock(let block):
+                bodyStack.addArrangedSubview(makeCardCodeBlockView(block: block))
+            }
+        }
+    }
+
+    private func makeCardBodyLabel() -> UILabel {
+        let l = UILabel()
+        l.font = cardBodyFont
+        l.textColor = cardTextColor
+        l.numberOfLines = 0
+        return l
+    }
+
+    /// Styled table grid for the dark card detail sheet. Horizontally
+    /// scrollable when the table is wider than the available width.
+    private func makeCardTableView(table: MarkdownTable) -> UIView {
+        let cellPadH: CGFloat = 10
+        let cellPadV: CGFloat = 7
+        let minCol: CGFloat = 52
+        let maxCol: CGFloat = 200
+        let cellFont = UIFont.systemFont(ofSize: 15, weight: .regular)
+        let headerCellFont = UIFont.systemFont(ofSize: 15, weight: .semibold)
+
+        // Measure column widths
+        var columnWidths = Array(repeating: minCol, count: table.columnCount)
+        let allRows = [table.headers] + table.rows
+        for (rowIdx, row) in allRows.enumerated() {
+            for (col, cell) in row.enumerated() where col < table.columnCount {
+                let font = (rowIdx == 0) ? headerCellFont : cellFont
+                let size = (cell as NSString).size(withAttributes: [.font: font])
+                let needed = ceil(size.width) + cellPadH * 2
+                columnWidths[col] = min(maxCol, max(columnWidths[col], needed))
+            }
+        }
+        let totalTableWidth = columnWidths.reduce(0, +)
+
+        // Wrapper with rounded border
+        let wrapper = UIView()
+        wrapper.translatesAutoresizingMaskIntoConstraints = false
+        wrapper.clipsToBounds = true
+        wrapper.layer.cornerRadius = 10
+        wrapper.layer.cornerCurve = .continuous
+        wrapper.layer.borderWidth = 0.5
+        wrapper.layer.borderColor = UIColor(white: 1, alpha: 0.15).cgColor
+        wrapper.backgroundColor = UIColor(white: 1, alpha: 0.06)
+
+        let scrollView = UIScrollView()
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.showsHorizontalScrollIndicator = true
+        scrollView.showsVerticalScrollIndicator = false
+        wrapper.addSubview(scrollView)
+        NSLayoutConstraint.activate([
+            scrollView.topAnchor.constraint(equalTo: wrapper.topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: wrapper.bottomAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: wrapper.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: wrapper.trailingAnchor),
+        ])
+
+        let container = UIView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+        container.backgroundColor = .clear
+        scrollView.addSubview(container)
+
+        let fillWidth = container.widthAnchor.constraint(
+            equalTo: scrollView.frameLayoutGuide.widthAnchor)
+        fillWidth.priority = UILayoutPriority(999)
+        NSLayoutConstraint.activate([
+            container.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
+            container.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
+            container.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
+            container.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
+            container.widthAnchor.constraint(greaterThanOrEqualToConstant: totalTableWidth),
+            fillWidth,
+            container.heightAnchor.constraint(equalTo: scrollView.frameLayoutGuide.heightAnchor),
+        ])
+
+        let vstack = UIStackView()
+        vstack.translatesAutoresizingMaskIntoConstraints = false
+        vstack.axis = .vertical
+        vstack.alignment = .fill
+        vstack.distribution = .fill
+        vstack.spacing = 0
+        container.addSubview(vstack)
+        NSLayoutConstraint.activate([
+            vstack.topAnchor.constraint(equalTo: container.topAnchor),
+            vstack.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            vstack.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            vstack.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+        ])
+
+        // Header row
+        vstack.addArrangedSubview(
+            makeCardTableRow(cells: table.headers, alignments: table.alignments,
+                             columnWidths: columnWidths, isHeader: true, alt: false,
+                             cellFont: cellFont, headerFont: headerCellFont))
+        // Data rows
+        for (i, row) in table.rows.enumerated() {
+            let div = UIView()
+            div.translatesAutoresizingMaskIntoConstraints = false
+            div.backgroundColor = UIColor(white: 1, alpha: 0.08)
+            div.heightAnchor.constraint(equalToConstant: 0.5).isActive = true
+            vstack.addArrangedSubview(div)
+            vstack.addArrangedSubview(
+                makeCardTableRow(cells: row, alignments: table.alignments,
+                                 columnWidths: columnWidths, isHeader: false,
+                                 alt: !i.isMultiple(of: 2),
+                                 cellFont: cellFont, headerFont: headerCellFont))
+        }
+
+        // Height calculation
+        var totalHeight: CGFloat = 0
+        for (rowIdx, row) in allRows.enumerated() {
+            var maxH: CGFloat = 0
+            for (col, cell) in row.enumerated() where col < table.columnCount {
+                let font = (rowIdx == 0) ? headerCellFont : cellFont
+                let w = columnWidths[col] - cellPadH * 2
+                let rect = (cell as NSString).boundingRect(
+                    with: CGSize(width: w, height: .greatestFiniteMagnitude),
+                    options: [.usesLineFragmentOrigin, .usesFontLeading],
+                    attributes: [.font: font], context: nil)
+                maxH = max(maxH, ceil(rect.height) + cellPadV * 2)
+            }
+            totalHeight += maxH
+            if rowIdx > 0 { totalHeight += 0.5 }
+        }
+        wrapper.heightAnchor.constraint(equalToConstant: totalHeight).isActive = true
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            scrollView.flashScrollIndicators()
+        }
+        return wrapper
+    }
+
+    private func makeCardTableRow(cells: [String],
+                                  alignments: [MarkdownColumnAlignment],
+                                  columnWidths: [CGFloat],
+                                  isHeader: Bool,
+                                  alt: Bool,
+                                  cellFont: UIFont,
+                                  headerFont: UIFont) -> UIView {
+        let row = UIView()
+        row.translatesAutoresizingMaskIntoConstraints = false
+        if isHeader {
+            row.backgroundColor = UIColor(white: 1, alpha: 0.08)
+        } else if alt {
+            row.backgroundColor = UIColor(white: 1, alpha: 0.03)
+        }
+
+        let hstack = UIStackView()
+        hstack.translatesAutoresizingMaskIntoConstraints = false
+        hstack.axis = .horizontal
+        hstack.alignment = .fill
+        hstack.distribution = .fill
+        hstack.spacing = 0
+        row.addSubview(hstack)
+        NSLayoutConstraint.activate([
+            hstack.topAnchor.constraint(equalTo: row.topAnchor),
+            hstack.bottomAnchor.constraint(equalTo: row.bottomAnchor),
+            hstack.leadingAnchor.constraint(equalTo: row.leadingAnchor),
+            hstack.trailingAnchor.constraint(equalTo: row.trailingAnchor),
+        ])
+
+        for (i, text) in cells.enumerated() {
+            let alignment = i < alignments.count ? alignments[i] : .left
+            let width = i < columnWidths.count ? columnWidths[i] : 70
+
+            let cell = UIView()
+            cell.translatesAutoresizingMaskIntoConstraints = false
+            cell.widthAnchor.constraint(equalToConstant: width).isActive = true
+
+            let label = UILabel()
+            label.translatesAutoresizingMaskIntoConstraints = false
+            label.numberOfLines = 0
+            label.font = isHeader ? headerFont : cellFont
+            label.textColor = isHeader ? .white : cardTextColor
+            let paragraph = NSMutableParagraphStyle()
+            switch alignment {
+            case .left:   paragraph.alignment = .left
+            case .center: paragraph.alignment = .center
+            case .right:  paragraph.alignment = .right
+            }
+            paragraph.lineBreakMode = .byWordWrapping
+            label.attributedText = NSAttributedString(
+                string: text,
+                attributes: [.font: label.font!, .foregroundColor: label.textColor!,
+                             .paragraphStyle: paragraph])
+
+            cell.addSubview(label)
+            NSLayoutConstraint.activate([
+                label.topAnchor.constraint(equalTo: cell.topAnchor, constant: 7),
+                label.bottomAnchor.constraint(equalTo: cell.bottomAnchor, constant: -7),
+                label.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 10),
+                label.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -10),
+            ])
+
+            if i > 0 {
+                let line = UIView()
+                line.translatesAutoresizingMaskIntoConstraints = false
+                line.backgroundColor = UIColor(white: 1, alpha: 0.08)
+                cell.addSubview(line)
+                NSLayoutConstraint.activate([
+                    line.leadingAnchor.constraint(equalTo: cell.leadingAnchor),
+                    line.topAnchor.constraint(equalTo: cell.topAnchor),
+                    line.bottomAnchor.constraint(equalTo: cell.bottomAnchor),
+                    line.widthAnchor.constraint(equalToConstant: 0.5),
+                ])
+            }
+            hstack.addArrangedSubview(cell)
+        }
+        return row
+    }
+
+    /// Styled code block for the dark card detail sheet.
+    private func makeCardCodeBlockView(block: MarkdownCodeBlock) -> UIView {
+        let container = UIView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+        container.backgroundColor = UIColor(white: 1, alpha: 0.06)
+        container.layer.cornerRadius = 8
+        container.layer.cornerCurve = .continuous
+
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.numberOfLines = 0
+        label.font = UIFont.monospacedSystemFont(ofSize: 14, weight: .regular)
+        label.textColor = UIColor(white: 0.82, alpha: 1)
+        label.text = block.code
+        container.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.topAnchor.constraint(equalTo: container.topAnchor, constant: 12),
+            label.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12),
+            label.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 12),
+            label.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -12),
+        ])
+
+        if let lang = block.language, !lang.isEmpty {
+            let badge = UILabel()
+            badge.translatesAutoresizingMaskIntoConstraints = false
+            badge.text = lang
+            badge.font = UIFont.monospacedSystemFont(ofSize: 10, weight: .medium)
+            badge.textColor = UIColor(white: 0.5, alpha: 1)
+            container.addSubview(badge)
+            NSLayoutConstraint.activate([
+                badge.topAnchor.constraint(equalTo: container.topAnchor, constant: 6),
+                badge.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -10),
+            ])
+        }
+        return container
     }
 
     // MARK: - Actions
