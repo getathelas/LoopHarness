@@ -240,6 +240,18 @@ final class SSHConfigStore {
         if let raw = iCloudKVSDefaults.shared.string(forKey: Self.selectedKey) {
             selectedID = UUID(uuidString: raw)
         }
+        loadConnections()
+        // Managed builds: make the build-time SSH config authoritative on every
+        // launch — inserting it at the top when missing (e.g. a stale/empty
+        // iCloud-synced list or a different endpoint seeded earlier) and
+        // re-asserting rotated secrets when it's already present.
+        ensureManagedConfigIfNeeded()
+    }
+
+    /// Populates `connections` from the best available store — the synced KVS
+    /// list, a legacy local `Data` blob, or the legacy single-config layout —
+    /// seeding from the build-time config when nothing is stored yet.
+    private func loadConnections() {
         // Preferred: the connection list synced via iCloud KVS (JSON string).
         if let json = iCloudKVSDefaults.shared.string(forKey: Self.listKey),
            let data = json.data(using: .utf8),
@@ -264,6 +276,66 @@ final class SSHConfigStore {
         if connections.isEmpty {
             seedFromInfoPlistIfNeeded()
         }
+    }
+
+    /// Managed builds only: make the build-time `SSH_*` connection authoritative
+    /// by *upserting* it on every launch, so the app always reflects the
+    /// endpoint the build ships — regardless of what's in the (possibly stale or
+    /// iCloud-synced) stored list. This is what guarantees a managed install
+    /// shows its connection even when a synced-empty list or a different "wrong"
+    /// endpoint was seeded earlier, and keeps a redeployed key/passphrase/port
+    /// in lock-step.
+    ///
+    /// - If a connection with the same host+username exists, its secret fields
+    ///   are refreshed in place when they differ (preserving its `id`) and it's
+    ///   promoted to the top of the list.
+    /// - Otherwise the managed connection is inserted at the top.
+    /// In both cases it's made the active selection, so the build's endpoint is
+    /// the one actually used. Non-managed builds, or a missing/garbled build
+    /// key, are left untouched.
+    private func ensureManagedConfigIfNeeded() {
+        guard AppFlags.isManaged,
+              let build = Self.infoPlistConfig(),
+              !build.privateKey.isEmpty else { return }
+
+        var mutated = false
+
+        if let idx = connections.firstIndex(where: {
+            $0.host.caseInsensitiveCompare(build.host) == .orderedSame
+                && $0.username == build.username
+        }) {
+            var current = connections[idx]
+            if current.privateKey != build.privateKey
+                || current.passphrase != build.passphrase
+                || current.port != build.port {
+                current.privateKey = build.privateKey
+                current.passphrase = build.passphrase
+                current.port = build.port
+                connections[idx] = current
+                mutated = true
+                Self.log.info("Reconciled managed SSH connection from build config host=\(build.host, privacy: .public) user=\(build.username, privacy: .public) (rotated key/passphrase/port)")
+            }
+            if idx != 0 {   // promote the managed endpoint to the top
+                let item = connections.remove(at: idx)
+                connections.insert(item, at: 0)
+                mutated = true
+            }
+        } else {
+            connections.insert(build, at: 0)
+            mutated = true
+            Self.log.info("Inserted managed SSH connection from build config host=\(build.host, privacy: .public) user=\(build.username, privacy: .public)")
+        }
+
+        // Force the managed connection active so it overrides any stale/wrong
+        // selection left from a previous build.
+        let managedID = connections[0].id
+        if effectiveSelectedID != managedID {
+            selectedID = managedID
+            iCloudKVSDefaults.shared.set(managedID.uuidString, forKey: Self.selectedKey)
+            mutated = true
+        }
+
+        if mutated { save() }
     }
 
     /// One-time seed of a connection from the build-time `Secrets.xcconfig`
