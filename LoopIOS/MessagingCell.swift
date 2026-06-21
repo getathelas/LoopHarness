@@ -450,6 +450,9 @@ class MessagingCell: UITableViewCell {
     private var galleryLoadToken: Int = 0
     /// Per-tile mapping (tile tag → full-resolution URL) for tap-to-open.
     private var galleryOriginalURLs: [Int: URL] = [:]
+    /// Search query for the current gallery, passed to the full-screen viewer
+    /// so it can derive a meaningful filename when saving images.
+    private var currentGalleryQuery: String?
     private static let galleryThumbSide: CGFloat = 120
 
     private var currentAttachmentId: String?
@@ -656,6 +659,7 @@ class MessagingCell: UITableViewCell {
         galleryTitleLabel.text = nil
         currentGalleryAttachmentId = nil
         galleryOriginalURLs.removeAll()
+        currentGalleryQuery = nil
         for tile in galleryStack.arrangedSubviews {
             galleryStack.removeArrangedSubview(tile)
             tile.removeFromSuperview()
@@ -2949,6 +2953,7 @@ class MessagingCell: UITableViewCell {
     private func applyImageGalleryAttachment(_ attachment: ImageGalleryAttachment,
                                              modelLabelText: String) {
         currentGalleryAttachmentId = attachment.id
+        currentGalleryQuery = attachment.query
 
         profileImageView.isHidden = true
         textView.isHidden = true
@@ -3095,7 +3100,8 @@ class MessagingCell: UITableViewCell {
         let startIndex = ordered.firstIndex(of: tile.tag) ?? 0
         let viewer = RemoteImageGalleryViewerController(imageURLs: urls,
                                                         startIndex: startIndex,
-                                                        startPlaceholder: tile.image)
+                                                        startPlaceholder: tile.image,
+                                                        query: currentGalleryQuery)
         viewer.modalPresentationStyle = .fullScreen
         presenter.present(viewer, animated: true)
     }
@@ -3122,12 +3128,16 @@ private final class RemoteImageGalleryViewerController: UIPageViewController,
     private let imageURLs: [URL]
     private var currentIndex: Int
     private let startPlaceholder: UIImage?
+    private let query: String?
     private let counterLabel = UILabel()
+    private let saveButton = UIButton(type: .system)
+    private var isSaving = false
 
-    init(imageURLs: [URL], startIndex: Int, startPlaceholder: UIImage?) {
+    init(imageURLs: [URL], startIndex: Int, startPlaceholder: UIImage?, query: String? = nil) {
         self.imageURLs = imageURLs
         self.currentIndex = min(max(0, startIndex), max(0, imageURLs.count - 1))
         self.startPlaceholder = startPlaceholder
+        self.query = query
         super.init(transitionStyle: .scroll,
                    navigationOrientation: .horizontal,
                    options: [.interPageSpacing: 16])
@@ -3152,6 +3162,14 @@ private final class RemoteImageGalleryViewerController: UIPageViewController,
         done.addTarget(self, action: #selector(dismissSelf), for: .touchUpInside)
         view.addSubview(done)
 
+        saveButton.translatesAutoresizingMaskIntoConstraints = false
+        let config = UIImage.SymbolConfiguration(pointSize: 22, weight: .medium)
+        saveButton.setImage(UIImage(systemName: "arrow.down.circle", withConfiguration: config), for: .normal)
+        saveButton.tintColor = .white
+        saveButton.addTarget(self, action: #selector(handleSave), for: .touchUpInside)
+        saveButton.accessibilityLabel = "Save image"
+        view.addSubview(saveButton)
+
         counterLabel.translatesAutoresizingMaskIntoConstraints = false
         counterLabel.textColor = .white
         counterLabel.font = UIFont.systemFont(ofSize: 15, weight: .medium)
@@ -3161,6 +3179,8 @@ private final class RemoteImageGalleryViewerController: UIPageViewController,
         NSLayoutConstraint.activate([
             done.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
             done.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            saveButton.centerYAnchor.constraint(equalTo: done.centerYAnchor),
+            saveButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             counterLabel.centerYAnchor.constraint(equalTo: done.centerYAnchor),
             counterLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
         ])
@@ -3181,6 +3201,98 @@ private final class RemoteImageGalleryViewerController: UIPageViewController,
     }
 
     @objc private func dismissSelf() { dismiss(animated: true) }
+
+    @objc private func handleSave() {
+        guard !isSaving, currentIndex >= 0, currentIndex < imageURLs.count else { return }
+        isSaving = true
+        let config = UIImage.SymbolConfiguration(pointSize: 22, weight: .medium)
+        saveButton.setImage(UIImage(systemName: "arrow.down.circle.dotted", withConfiguration: config), for: .normal)
+        saveButton.isEnabled = false
+
+        let imageURL = imageURLs[currentIndex]
+        let index = currentIndex
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            self?.downloadAndSaveToWorkspace(imageURL: imageURL, index: index)
+        }
+    }
+
+    private func downloadAndSaveToWorkspace(imageURL: URL, index: Int) {
+        let folderRelPath = "downloads/images"
+        do {
+            let folderURL = try Workspace.shared.resolve(folderRelPath)
+            try Workspace.shared.coordinatedCreateDirectory(at: folderURL)
+        } catch {
+            NSLog("[image_gallery] failed to create downloads/images: \(error.localizedDescription)")
+            DispatchQueue.main.async { self.showSaveResult(success: false) }
+            return
+        }
+
+        var request = URLRequest(url: imageURL)
+        request.timeoutInterval = 30
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+            if let error = error {
+                NSLog("[image_gallery] download failed: \(error.localizedDescription)")
+                DispatchQueue.main.async { self.showSaveResult(success: false) }
+                return
+            }
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard let data = data, !data.isEmpty, status >= 200, status < 400 else {
+                NSLog("[image_gallery] download failed with status \(status)")
+                DispatchQueue.main.async { self.showSaveResult(success: false) }
+                return
+            }
+
+            let sanitized = RemoteImageGalleryViewerController.sanitizeFilename(self.query ?? "image")
+            let ext = RemoteImageGalleryViewerController.imageExtension(from: imageURL)
+            let filename = "\(sanitized)_\(index + 1).\(ext)"
+            let relPath = "\(folderRelPath)/\(filename)"
+
+            do {
+                let fileURL = try Workspace.shared.resolve(relPath)
+                try Workspace.shared.coordinatedWrite(to: fileURL) { writeURL in
+                    try data.write(to: writeURL, options: .atomic)
+                }
+                NSLog("[image_gallery] saved image to \(relPath)")
+                DispatchQueue.main.async { self.showSaveResult(success: true) }
+            } catch {
+                NSLog("[image_gallery] save failed: \(error.localizedDescription)")
+                DispatchQueue.main.async { self.showSaveResult(success: false) }
+            }
+        }.resume()
+    }
+
+    private func showSaveResult(success: Bool) {
+        let config = UIImage.SymbolConfiguration(pointSize: 22, weight: .medium)
+        let name = success ? "checkmark.circle.fill" : "xmark.circle"
+        saveButton.setImage(UIImage(systemName: name, withConfiguration: config), for: .normal)
+        saveButton.tintColor = success ? .systemGreen : .systemRed
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            guard let self = self else { return }
+            self.saveButton.setImage(UIImage(systemName: "arrow.down.circle", withConfiguration: config), for: .normal)
+            self.saveButton.tintColor = .white
+            self.saveButton.isEnabled = true
+            self.isSaving = false
+        }
+    }
+
+    private static func sanitizeFilename(_ name: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
+        let cleaned = name.unicodeScalars
+            .map { allowed.contains($0) ? Character($0) : Character("_") }
+        var result = String(cleaned)
+            .replacingOccurrences(of: "__+", with: "_", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "_"))
+        if result.isEmpty { result = "image" }
+        if result.count > 60 { result = String(result.prefix(60)) }
+        return result
+    }
+
+    private static func imageExtension(from url: URL) -> String {
+        let ext = url.pathExtension.lowercased()
+        let valid: Set<String> = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"]
+        return valid.contains(ext) ? ext : "jpg"
+    }
 
     // MARK: UIPageViewControllerDataSource
 

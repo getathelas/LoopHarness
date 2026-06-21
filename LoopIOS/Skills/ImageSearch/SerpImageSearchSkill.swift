@@ -28,7 +28,7 @@ struct SerpImageSearchSkill {
 
     static let systemPromptFragment: String = """
 You can search the web for REAL photos and render them inline with this tool:
-- image_search: pass a `query` (e.g. "Alamo Square park", "golden retriever puppy", "mid-century modern living room") and optional `num_results` (default 6, max 10). Returns Google Images results and renders them as a thumbnail gallery in the chat; the user can tap a thumbnail to open the full image.
+- image_search: pass a `query` (e.g. "Alamo Square park", "golden retriever puppy", "mid-century modern living room") and optional `num_results` (default 6, max 10). Returns Google Images results and renders them as a thumbnail gallery in the chat; the user can tap a thumbnail to open the full image. Pass `save: true` to also download the full-size images and save them to the workspace under `downloads/images/` — the result will include the saved file paths so you can reference or share_file them later.
 
 This is the DEFAULT and ONLY correct tool whenever the user wants to see real, existing images/photos/pictures of anything in the world ("find me images of…", "show me photos of…", "what does X look like", "pull up pics of…", "get me images of…"). It is much cheaper than generating images.
 
@@ -36,6 +36,7 @@ Hard rules:
 - For real/existing subjects, ALWAYS call image_search. NEVER call generate_image for these — generating an AI picture of a real place/person/thing is wrong and expensive.
 - Only use generate_image (not this tool) when the user explicitly wants an *invented* or artistic image that doesn't exist yet (a drawing, mockup, concept, logo, moodboard).
 - One image_search call per request renders the whole gallery — do not loop or call it once per image, and do not fall back to exa_search/fetch_url to scrape image URLs. If image_search returns an error, tell the user it failed (and why) rather than generating images or scraping pages.
+- When the user asks to save/download/keep the images, pass `save: true`.
 
 After a successful call: add a short one-liner ("Here are a few shots of Ocean Beach.") — the gallery shows the images, so don't list them out.
 """
@@ -56,6 +57,10 @@ After a successful call: add a short one-liner ("Here are a few shots of Ocean B
                         "num_results": [
                             "type": "integer",
                             "description": "How many images to show (default 6, max 10)."
+                        ],
+                        "save": [
+                            "type": "boolean",
+                            "description": "When true, download each image and save it to the workspace under downloads/images/. Saved file paths are included in the result. Default false."
                         ]
                     ],
                     "required": ["query"]
@@ -110,8 +115,10 @@ After a successful call: add a short one-liner ("Here are a few shots of Ocean B
             }
             let requested = intArg(functionCall.arguments["num_results"]) ?? SerpImageSearchSkill.defaultResults
             let n = max(1, min(SerpImageSearchSkill.maxResults, requested))
+            let save = (functionCall.arguments["save"] as? Bool) ?? false
             imageSearch(query: query,
                         numResults: n,
+                        save: save,
                         conversationId: functionCall.conversationId,
                         completion: completion)
         default:
@@ -126,6 +133,7 @@ After a successful call: add a short one-liner ("Here are a few shots of Ocean B
 
     private func imageSearch(query: String,
                              numResults: Int,
+                             save: Bool,
                              conversationId: String?,
                              completion: @escaping (MessageStruct) -> Void) {
         guard let apiKey = SerpImageSearchSkill.apiKey else {
@@ -205,23 +213,149 @@ After a successful call: add a short one-liner ("Here are a few shots of Ocean B
                 conversationId: conversationId
             )
 
-            // Short body for the model — the user-visible surface is the
-            // rendered gallery; we just confirm what landed plus the sources
-            // so the model can attribute/caption without restating the list.
-            var lines = ["Showed \(items.count) image\(items.count == 1 ? "" : "s") for \"\(query)\" in a gallery. Sources:"]
-            for (i, item) in items.enumerated() {
-                let label = item.title ?? URL(string: item.sourceLink ?? "")?.host ?? "image"
-                let src = item.sourceLink ?? item.originalURL
-                lines.append("\(i + 1). \(SerpImageSearchSkill.truncate(label, to: 80)) — \(src)")
+            if save {
+                SerpImageSearchSkill.downloadAndSaveImages(
+                    items: items, query: query, attachment: attachment
+                ) { savedPaths in
+                    var lines = ["Showed \(items.count) image\(items.count == 1 ? "" : "s") for \"\(query)\" in a gallery. Sources:"]
+                    for (i, item) in items.enumerated() {
+                        let label = item.title ?? URL(string: item.sourceLink ?? "")?.host ?? "image"
+                        let src = item.sourceLink ?? item.originalURL
+                        lines.append("\(i + 1). \(SerpImageSearchSkill.truncate(label, to: 80)) — \(src)")
+                    }
+                    if savedPaths.isEmpty {
+                        lines.append("\nFailed to save any images to the workspace.")
+                    } else {
+                        lines.append("\nSaved \(savedPaths.count) image(s) to workspace:")
+                        for p in savedPaths {
+                            lines.append("- \(p)")
+                        }
+                    }
+                    completion(MessageStruct(
+                        role: "function",
+                        content: lines.joined(separator: "\n"),
+                        name: "image_search",
+                        imageGalleryAttachment: attachment
+                    ))
+                }
+            } else {
+                // Short body for the model — the user-visible surface is the
+                // rendered gallery; we just confirm what landed plus the sources
+                // so the model can attribute/caption without restating the list.
+                var lines = ["Showed \(items.count) image\(items.count == 1 ? "" : "s") for \"\(query)\" in a gallery. Sources:"]
+                for (i, item) in items.enumerated() {
+                    let label = item.title ?? URL(string: item.sourceLink ?? "")?.host ?? "image"
+                    let src = item.sourceLink ?? item.originalURL
+                    lines.append("\(i + 1). \(SerpImageSearchSkill.truncate(label, to: 80)) — \(src)")
+                }
+                completion(MessageStruct(
+                    role: "function",
+                    content: lines.joined(separator: "\n"),
+                    name: "image_search",
+                    imageGalleryAttachment: attachment
+                ))
+            }
+        }.resume()
+    }
+
+    // MARK: - Image download & save
+
+    /// Download images and save them to the workspace under `downloads/images/`.
+    /// Calls `completion` with the list of workspace-relative paths that were
+    /// successfully saved. Failed downloads are skipped gracefully.
+    private static func downloadAndSaveImages(
+        items: [ImageGalleryAttachment.Item],
+        query: String,
+        attachment: ImageGalleryAttachment,
+        completion: @escaping ([String]) -> Void
+    ) {
+        let sanitized = sanitizeFilename(query)
+        let folderRelPath = "downloads/images"
+
+        // Ensure the target directory exists.
+        do {
+            let folderURL = try Workspace.shared.resolve(folderRelPath)
+            try Workspace.shared.coordinatedCreateDirectory(at: folderURL)
+        } catch {
+            NSLog("[image_search] failed to create downloads/images folder: \(error.localizedDescription)")
+            completion([])
+            return
+        }
+
+        let group = DispatchGroup()
+        let lock = NSLock()
+        var savedPaths: [String] = []
+
+        for (index, item) in items.enumerated() {
+            let imageURLString = item.originalURL
+            guard let imageURL = URL(string: imageURLString) else {
+                NSLog("[image_search] skipping invalid URL at index \(index): \(imageURLString)")
+                continue
             }
 
-            completion(MessageStruct(
-                role: "function",
-                content: lines.joined(separator: "\n"),
-                name: "image_search",
-                imageGalleryAttachment: attachment
-            ))
-        }.resume()
+            // Derive extension from the URL path, defaulting to .jpg.
+            let ext = SerpImageSearchSkill.imageExtension(from: imageURL)
+            let filename = "\(sanitized)_\(index + 1).\(ext)"
+            let relPath = "\(folderRelPath)/\(filename)"
+
+            group.enter()
+            var request = URLRequest(url: imageURL)
+            request.timeoutInterval = 15
+            URLSession.shared.dataTask(with: request) { data, response, error in
+                defer { group.leave() }
+                if let error = error {
+                    NSLog("[image_search] download failed for index \(index): \(error.localizedDescription)")
+                    return
+                }
+                guard let data = data, !data.isEmpty else {
+                    NSLog("[image_search] empty data for index \(index)")
+                    return
+                }
+                let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+                guard status >= 200 && status < 400 else {
+                    NSLog("[image_search] HTTP \(status) for index \(index)")
+                    return
+                }
+                do {
+                    let fileURL = try Workspace.shared.resolve(relPath)
+                    try Workspace.shared.coordinatedWrite(to: fileURL) { writeURL in
+                        try data.write(to: writeURL, options: .atomic)
+                    }
+                    lock.lock()
+                    savedPaths.append(relPath)
+                    lock.unlock()
+                    NSLog("[image_search] saved image \(index + 1) → \(relPath)")
+                } catch {
+                    NSLog("[image_search] save failed for index \(index): \(error.localizedDescription)")
+                }
+            }.resume()
+        }
+
+        group.notify(queue: .global(qos: .userInitiated)) {
+            // Sort so paths come back in index order.
+            let sorted = savedPaths.sorted()
+            completion(sorted)
+        }
+    }
+
+    /// Clean a query string into a safe filesystem name segment.
+    private static func sanitizeFilename(_ name: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
+        let cleaned = name.unicodeScalars
+            .map { allowed.contains($0) ? Character($0) : Character("_") }
+        var result = String(cleaned)
+            .replacingOccurrences(of: "__+", with: "_", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "_"))
+        if result.isEmpty { result = "image_search" }
+        if result.count > 60 { result = String(result.prefix(60)) }
+        return result
+    }
+
+    /// Derive a file extension from an image URL, defaulting to "jpg".
+    private static func imageExtension(from url: URL) -> String {
+        let ext = url.pathExtension.lowercased()
+        let valid: Set<String> = ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"]
+        return valid.contains(ext) ? ext : "jpg"
     }
 
     // MARK: - Helpers
