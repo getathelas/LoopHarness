@@ -56,6 +56,7 @@ final class MusicMiniPlayerView: UIView {
     private let cardCollapseButton = UIButton(type: .system)
     private let cardProgressView = UIProgressView(progressViewStyle: .default)
     private let cardDismissButton = UIButton(type: .system)
+    private let cardOpenInMusicButton = UIButton(type: .system)
 
     // MARK: - State tracking
 
@@ -248,6 +249,13 @@ final class MusicMiniPlayerView: UIView {
         cardDismissButton.addTarget(self, action: #selector(dismissPlayer), for: .touchUpInside)
         cardContainer.addSubview(cardDismissButton)
 
+        cardOpenInMusicButton.translatesAutoresizingMaskIntoConstraints = false
+        cardOpenInMusicButton.tintColor = .systemPink
+        cardOpenInMusicButton.setImage(UIImage(systemName: "arrow.up.forward.app",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 10, weight: .semibold)), for: .normal)
+        cardOpenInMusicButton.addTarget(self, action: #selector(openInAppleMusic), for: .touchUpInside)
+        cardContainer.addSubview(cardOpenInMusicButton)
+
         cardHeightConstraint = cardContainer.heightAnchor.constraint(equalToConstant: 160)
 
         NSLayoutConstraint.activate([
@@ -258,6 +266,9 @@ final class MusicMiniPlayerView: UIView {
 
             cardCollapseButton.topAnchor.constraint(equalTo: cardContainer.topAnchor, constant: 8),
             cardCollapseButton.centerXAnchor.constraint(equalTo: cardContainer.centerXAnchor),
+
+            cardOpenInMusicButton.topAnchor.constraint(equalTo: cardContainer.topAnchor, constant: 8),
+            cardOpenInMusicButton.leadingAnchor.constraint(equalTo: cardContainer.leadingAnchor, constant: 12),
 
             cardDismissButton.topAnchor.constraint(equalTo: cardContainer.topAnchor, constant: 8),
             cardDismissButton.trailingAnchor.constraint(equalTo: cardContainer.trailingAnchor, constant: -12),
@@ -301,6 +312,11 @@ final class MusicMiniPlayerView: UIView {
         let cardSwipeDown = UISwipeGestureRecognizer(target: self, action: #selector(collapseToMinimized))
         cardSwipeDown.direction = .down
         cardContainer.addGestureRecognizer(cardSwipeDown)
+
+        // Long press pill to open in Apple Music
+        let pillLongPress = UILongPressGestureRecognizer(target: self, action: #selector(handlePillLongPress(_:)))
+        pillLongPress.minimumPressDuration = 0.5
+        pillContainer.addGestureRecognizer(pillLongPress)
 
         // Swipe left/right on pill to dismiss
         let pillSwipeLeft = UISwipeGestureRecognizer(target: self, action: #selector(dismissPlayer))
@@ -543,10 +559,31 @@ final class MusicMiniPlayerView: UIView {
         transitionTo(.hidden, animated: true)
     }
 
+    @objc private func handlePillLongPress(_ gesture: UILongPressGestureRecognizer) {
+        guard gesture.state == .began else { return }
+        openInAppleMusic()
+    }
+
     @objc private func openInAppleMusic() {
-        // Deep-link to currently playing track in Apple Music
-        if let url = URL(string: "music://") {
-            UIApplication.shared.open(url)
+        let url = Self.currentTrackDeepLinkURL()
+            ?? MusicController.shared.appleMusicDeepLinkURL()
+            ?? URL(string: "music://")!
+        UIApplication.shared.open(url)
+    }
+
+    /// Try to build a deep link from the currently playing queue entry.
+    /// This handles track auto-advancement (the queue moves past the
+    /// original `nowPlaying` metadata).
+    private static func currentTrackDeepLinkURL() -> URL? {
+        let player = ApplicationMusicPlayer.shared
+        guard let entry = player.queue.currentEntry else { return nil }
+        switch entry.item {
+        case .song(let song):
+            let id = song.id.rawValue
+            guard !id.hasPrefix("i.") else { return nil }
+            return URL(string: "music://music.apple.com/song/\(id)")
+        default:
+            return nil
         }
     }
 
