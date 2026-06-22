@@ -107,6 +107,7 @@ struct ToolRouter {
         ], toolNames: [
             "find_music", "play_music", "control_music", "get_music_status",
             "create_playlist", "request_music_authorization", "set_music_mood",
+            "list_library_playlists",
         ]),
         SkillGroup(name: "location", keywords: [
             "location", "where am i", "map", "directions", "nearby",

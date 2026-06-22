@@ -74,4 +74,22 @@ final class MusicSkillTests: XCTestCase {
         )
         XCTAssertEqual(skill.statusText(for: call), "creating playlist \"Focus Mix\"")
     }
+
+    func testListLibraryPlaylistsSchemaIsZeroArgument() {
+        let tool = MusicSkill.tools.first { tool in
+            (tool["function"] as? [String: Any])?["name"] as? String == "list_library_playlists"
+        }
+        XCTAssertNotNil(tool, "list_library_playlists must be in the tools array")
+        let params = ((tool?["function"] as? [String: Any])?["parameters"] as? [String: Any])
+        let props = params?["properties"] as? [String: Any]
+        XCTAssertEqual(props?.count, 0, "list_library_playlists should have no parameters")
+    }
+
+    func testStatusTextForListLibraryPlaylists() {
+        let call = FunctionCallStruct(
+            name: "list_library_playlists",
+            arguments: [:]
+        )
+        XCTAssertEqual(skill.statusText(for: call), "listing library playlists")
+    }
 }
