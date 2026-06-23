@@ -138,6 +138,8 @@
 	<string>Loop does not write to Health. This key is present only because the HealthKit framework requires it; the app never requests write access.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Loop transcribes the voice messages you record so you can talk to the assistant. When you pick Apple in Settings ▸ Model ▸ STT, transcription happens entirely on this device.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Loop monitors your motion activity (e.g. cycling) to automatically improve voice capture quality in noisy environments like biking.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Loop connects to machines on your local network and Tailscale (e.g. your Mac) over SSH so you can run a terminal and drive your loop runner.</string>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>

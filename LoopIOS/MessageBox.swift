@@ -101,6 +101,9 @@ class MessageBox: UIView {
     // when the key is missing, the WebSocket can't be reached, or we're offline.
     private var audioEngine: AVAudioEngine?
     private var deepgramSTT: DeepgramSTT?
+    /// High-pass EQ node inserted into the AVAudioEngine graph when biking
+    /// is detected, cutting wind rumble below ~200 Hz.
+    private var windFilterEQ: AVAudioUnitEQ?
     private var isStreamingSTT = false
     private var streamingAmplitude: Float = 0
     private var streamingFinalizeTimer: Timer?
@@ -768,13 +771,21 @@ class MessageBox: UIView {
         // makes the listenStart / listenSend earcons inaudible while recording is
         // active. `.defaultToSpeaker` routes output to the loudspeaker when no
         // headphones are connected, matching what users expect for a voice flow.
+        //
+        // When biking is detected, switch to `.voiceChat` mode which enables
+        // Apple's built-in echo cancellation, noise suppression, and AGC —
+        // significantly improving capture quality against wind noise.
         let audioSession = AVAudioSession.sharedInstance()
+        let sessionMode: AVAudioSession.Mode = MotionActivityManager.shared.isBiking ? .voiceChat : .default
         do {
-            try audioSession.setCategory(.playAndRecord, mode: .default, options: [.mixWithOthers, .allowBluetooth, .defaultToSpeaker])
+            try audioSession.setCategory(.playAndRecord, mode: sessionMode, options: [.mixWithOthers, .allowBluetooth, .defaultToSpeaker])
             try audioSession.setActive(true)
         } catch {
             print("Failed to setup audio session: \(error)")
             return
+        }
+        if sessionMode == .voiceChat {
+            print("MessageBox: voice isolation enabled (biking detected)")
         }
         
         // Setup recording URL
@@ -1396,16 +1407,47 @@ extension MessageBox {
         // attenuates output and would silence earcons. `.default` +
         // `.defaultToSpeaker` keeps both Deepgram capture quality and earcon
         // playback audible.
+        //
+        // When biking is detected, switch to `.voiceChat` mode for Apple's
+        // built-in noise suppression / echo cancellation / AGC.
+        let bikingActive = MotionActivityManager.shared.isBiking
         let audioSession = AVAudioSession.sharedInstance()
+        let sessionMode: AVAudioSession.Mode = bikingActive ? .voiceChat : .default
         do {
-            try audioSession.setCategory(.playAndRecord, mode: .default, options: [.mixWithOthers, .allowBluetooth, .defaultToSpeaker])
+            try audioSession.setCategory(.playAndRecord, mode: sessionMode, options: [.mixWithOthers, .allowBluetooth, .defaultToSpeaker])
             try audioSession.setActive(true)
         } catch {
             print("Streaming STT: audio session failed (\(error)) — falling back to AVAudioRecorder")
             return false
         }
+        if bikingActive {
+            print("Streaming STT: voice isolation enabled (biking detected)")
+        }
 
         let engine = AVAudioEngine()
+
+        // When biking, insert a high-pass EQ filter at ~200 Hz to cut wind
+        // rumble before the audio reaches the STT input tap. The EQ node
+        // sits between inputNode and mainMixerNode; the tap reads from the
+        // EQ’s output so captured audio is already filtered.
+        if bikingActive {
+            let eq = AVAudioUnitEQ(numberOfBands: 1)
+            if let band = eq.bands.first {
+                band.filterType = .highPass
+                band.frequency = 200
+                band.bandwidth = 1.0
+                band.bypass = false
+            }
+            engine.attach(eq)
+            let inFmt = engine.inputNode.outputFormat(forBus: 0)
+            engine.connect(engine.inputNode, to: eq, format: inFmt)
+            engine.connect(eq, to: engine.mainMixerNode, format: inFmt)
+            self.windFilterEQ = eq
+            print("Streaming STT: high-pass wind filter engaged at 200 Hz")
+        } else {
+            self.windFilterEQ = nil
+        }
+
         let inputFormat = engine.inputNode.outputFormat(forBus: 0)
         guard inputFormat.sampleRate > 0,
               let outputFormat = AVAudioFormat(commonFormat: .pcmFormatInt16,
@@ -1469,7 +1511,11 @@ extension MessageBox {
 
         stt.connect()
 
-        engine.inputNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
+        // When the wind filter EQ is active, tap from its output so
+        // captured audio is already high-pass filtered. Otherwise tap
+        // directly from the input node as before.
+        let tapNode: AVAudioNode = self.windFilterEQ ?? engine.inputNode
+        tapNode.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
             guard let self = self else { return }
 
             // Mirror the unconverted buffer to the SFSpeech fallback file. Best-effort.
@@ -1550,8 +1596,10 @@ extension MessageBox {
         guard isStreamingSTT else { return }
 
         // Stop the audio engine immediately — no point sending more frames.
+        // Remove the tap from whichever node it was installed on.
         if let engine = audioEngine, engine.isRunning {
-            engine.inputNode.removeTap(onBus: 0)
+            let tapNode: AVAudioNode = windFilterEQ ?? engine.inputNode
+            tapNode.removeTap(onBus: 0)
             engine.stop()
         }
         recordingTimer?.invalidate()
@@ -1649,10 +1697,17 @@ extension MessageBox {
 
         if let engine = audioEngine {
             if engine.isRunning {
-                engine.inputNode.removeTap(onBus: 0)
+                // Remove the tap from whichever node it was installed on
+                // (windFilterEQ when biking, inputNode otherwise).
+                let tapNode: AVAudioNode = windFilterEQ ?? engine.inputNode
+                tapNode.removeTap(onBus: 0)
                 engine.stop()
             }
         }
+        if let eq = windFilterEQ, let engine = audioEngine {
+            engine.detach(eq)
+        }
+        windFilterEQ = nil
         audioEngine = nil
 
         streamingFallbackFile = nil

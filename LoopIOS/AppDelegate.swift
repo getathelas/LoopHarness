@@ -56,6 +56,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // sender that would push on agent completion is not built yet.
         PushRegistration.shared.registerIfAuthorized()
 
+        // Start Core Motion activity monitoring so the audio pipeline can
+        // detect biking and engage voice-isolation / wind-filter automatically.
+        // No-op if the device doesn't support activity monitoring.
+        MotionActivityManager.shared.startMonitoring()
+
         AppSignals.emit("app_launched")
 
         return true
