@@ -56,6 +56,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // sender that would push on agent completion is not built yet.
         PushRegistration.shared.registerIfAuthorized()
 
+        // Motion-aware UI: start monitoring cycling/automotive activity so
+        // the message bar can enlarge its tap targets while the user is biking.
+        #if os(iOS)
+        MotionActivityManager.shared.startMonitoring()
+        #endif
+
         AppSignals.emit("app_launched")
 
         return true
