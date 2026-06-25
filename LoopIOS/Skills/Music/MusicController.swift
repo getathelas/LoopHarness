@@ -191,12 +191,66 @@ final class MusicController {
             ]
         }
 
+        // Search the user's personal library playlists in parallel with
+        // the catalog results we already have.
+        let libraryPlaylists = await findLibraryPlaylists(query: query, limit: limit)
+
         return [
             "status": "ok",
             "songs": songs,
             "albums": albums,
-            "playlists": playlists
+            "playlists": playlists,
+            "library_playlists": libraryPlaylists
         ]
+    }
+
+    /// Search the user's personal Apple Music library for playlists matching
+    /// `query`. Falls back to fetching all library playlists and filtering
+    /// client-side when the library search endpoint isn't available.
+    private func findLibraryPlaylists(query: String, limit: Int) async -> [[String: Any]] {
+        let lowered = query.lowercased()
+
+        // Try the dedicated library-search endpoint first.
+        do {
+            var request = MusicLibrarySearchRequest(term: query, types: [Playlist.self])
+            request.limit = max(1, min(25, limit))
+            let response = try await request.response()
+            let results: [[String: Any]] = response.playlists.prefix(limit).map { playlist in
+                [
+                    "id": playlist.id.rawValue,
+                    "type": "library_playlist",
+                    "title": playlist.name,
+                    "source": "library"
+                ]
+            }
+            if !results.isEmpty {
+                print("MusicController: library search returned \(results.count) playlists")
+                return results
+            }
+        } catch {
+            print("MusicController: MusicLibrarySearchRequest failed (\(error)), falling back to full list")
+        }
+
+        // Fallback: fetch all library playlists and filter client-side.
+        do {
+            let request = MusicLibraryRequest<Playlist>()
+            let response = try await request.response()
+            let results: [[String: Any]] = response.items.filter { playlist in
+                playlist.name.lowercased().contains(lowered)
+            }.prefix(limit).map { playlist in
+                [
+                    "id": playlist.id.rawValue,
+                    "type": "library_playlist",
+                    "title": playlist.name,
+                    "source": "library"
+                ]
+            }
+            print("MusicController: library fallback matched \(results.count) playlists")
+            return results
+        } catch {
+            print("MusicController: library playlist fallback failed — \(error)")
+            return []
+        }
     }
 
     // MARK: - Playback
