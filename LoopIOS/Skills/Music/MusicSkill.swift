@@ -16,6 +16,7 @@ struct MusicSkill {
 
     static let systemPromptFragment: String = """
 You can put on music to match the moment via these tools:
+- list_library_playlists: returns all playlists in the user's personal Apple Music library (zero arguments). Each entry has an id you can pass straight to play_music with target_type="playlist".
 - find_music: catalog search across songs, albums, and playlists. Pass `query`, optional `instrumental_only` (default false), optional `limit` (default 8).
 - play_music: start playback of a `target_id` from a previous find_music result or a user-library id (p.… playlists, l.… albums, i.… songs). `target_type` ∈ "song" | "album" | "playlist". `queue_mode` ∈ "replace" | "append" (default "replace"). For playlists/albums the entire track list is queued, not just the first track.
 - set_music_mood: high-level shortcut — pass `mood` and we pick a fitting track for you. Mood vocabulary: \(MusicMoodMap.vocabularyList). Pass `instrumental_only=true` to force a vocal-free pick.
@@ -147,6 +148,14 @@ How to behave:
         [
             "type": "function",
             "function": [
+                "name": "list_library_playlists",
+                "description": "List all playlists saved in the user's personal Apple Music library. Returns ids compatible with play_music (target_type=\"playlist\").",
+                "parameters": ["type": "object", "properties": [:], "required": []]
+            ]
+        ],
+        [
+            "type": "function",
+            "function": [
                 "name": "get_music_status",
                 "description": "Return what's currently playing: title, artist, instrumental hint, play/pause state, pause reason.",
                 "parameters": ["type": "object", "properties": [:], "required": []]
@@ -169,6 +178,7 @@ How to behave:
         "create_playlist",
         "control_music",
         "get_music_status",
+        "list_library_playlists",
         "request_music_authorization"
     ]
 
@@ -203,8 +213,9 @@ How to behave:
             case "stop":   return "stopping music"
             default:       return "controlling music"
             }
-        case "get_music_status": return "checking music"
-        default:                return nil
+        case "get_music_status":        return "checking music"
+        case "list_library_playlists": return "listing library playlists"
+        default:                       return nil
         }
     }
 
@@ -320,6 +331,11 @@ How to behave:
             Task { @MainActor in
                 let json = MusicController.shared.status()
                 completion(Self.functionMessage(name: name, json: json))
+            }
+
+        case "list_library_playlists":
+            Self.runWithTimeout(name: name, seconds: 15, completion: completion) {
+                try await MusicController.shared.listLibraryPlaylists()
             }
 
         case "request_music_authorization":

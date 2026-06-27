@@ -617,6 +617,37 @@ final class MusicController {
         return out
     }
 
+    // MARK: - Library playlists
+
+    func listLibraryPlaylists() async throws -> [String: Any] {
+        guard await ensureAuthorized() else { return unauthorizedResult }
+
+        var req = MusicLibraryRequest<Playlist>()
+        req.sort(by: \.lastPlayedDate, ascending: false)
+        let response = try await req.response()
+
+        let playlists: [[String: Any]] = response.items.map { playlist in
+            var entry: [String: Any] = [
+                "id": playlist.id.rawValue,
+                "name": playlist.name,
+            ]
+            if let desc = playlist.standardDescription, !desc.isEmpty {
+                entry["description"] = desc
+            }
+            if let artwork = playlist.artwork,
+               let url = artwork.url(width: 300, height: 300)?.absoluteString {
+                entry["artwork_url"] = url
+            }
+            return entry
+        }
+
+        return [
+            "status": "ok",
+            "count": playlists.count,
+            "playlists": playlists,
+        ]
+    }
+
     // MARK: - Playlist creation
 
     func createPlaylist(name: String,
