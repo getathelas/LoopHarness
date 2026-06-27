@@ -135,6 +135,23 @@ class MessageBox: UIView {
     private let mediumFeedback = UIImpactFeedbackGenerator(style: .medium)
     private let heavyFeedback = UIImpactFeedbackGenerator(style: .heavy)
 
+    // MARK: - Motion-aware UI
+    /// Constraint references for the mic button dimensions, made mutable so
+    /// the biking-mode enlargement can swap them at runtime.
+    private var micButtonWidthConstraint: NSLayoutConstraint?
+    private var micButtonHeightConstraint: NSLayoutConstraint?
+    /// Constraint references for the attach (stop) button dimensions.
+    private var attachButtonWidthConstraint: NSLayoutConstraint?
+    private var attachButtonHeightConstraint: NSLayoutConstraint?
+    /// Normal mic button size — the resting empty-field height.
+    private static let micButtonNormalSize: CGFloat = 50
+    /// Enlarged mic button size when biking is detected.
+    private static let micButtonBikingSize: CGFloat = 80
+    /// Normal attach button size.
+    private static let attachButtonNormalSize: CGFloat = 36
+    /// Enlarged attach button size when biking is detected.
+    private static let attachButtonBikingSize: CGFloat = 56
+
     private static var deepgramAPIKey: String? {
         return KeyStore.shared.value(for: .deepgram)
     }
@@ -222,16 +239,12 @@ class MessageBox: UIView {
             // as the field grows.
             micButton.trailingAnchor.constraint(equalTo: self.trailingAnchor, constant: -15),
             micButton.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
-            micButton.widthAnchor.constraint(equalToConstant: emptyFieldHeight),
-            micButton.heightAnchor.constraint(equalToConstant: emptyFieldHeight),
 
             // Files button — inside the field on the left, bottom-aligned. Its
             // 7pt inset centers the 36pt button in the empty 50pt field, and it
             // stays at the bottom as the field grows.
             attachButton.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 8),
             attachButton.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -7),
-            attachButton.widthAnchor.constraint(equalToConstant: 36),
-            attachButton.heightAnchor.constraint(equalToConstant: 36),
 
             // Attachment chip sits above containerView; pinned 8pt above its top
             // when visible, and constrained to a 0 height when hidden via the
@@ -283,6 +296,20 @@ class MessageBox: UIView {
             transcribingLabel.centerXAnchor.constraint(equalTo: recordingContainerView.centerXAnchor),
             transcribingLabel.centerYAnchor.constraint(equalTo: recordingContainerView.centerYAnchor)
         ])
+
+        // Mic and attach button size constraints are stored so the
+        // biking-mode enlargement can update them at runtime.
+        let micW = micButton.widthAnchor.constraint(equalToConstant: Self.micButtonNormalSize)
+        let micH = micButton.heightAnchor.constraint(equalToConstant: Self.micButtonNormalSize)
+        micButtonWidthConstraint = micW
+        micButtonHeightConstraint = micH
+        NSLayoutConstraint.activate([micW, micH])
+
+        let attW = attachButton.widthAnchor.constraint(equalToConstant: Self.attachButtonNormalSize)
+        let attH = attachButton.heightAnchor.constraint(equalToConstant: Self.attachButtonNormalSize)
+        attachButtonWidthConstraint = attW
+        attachButtonHeightConstraint = attH
+        NSLayoutConstraint.activate([attW, attH])
         
         keyboardButton.isHidden = true
         attachButton.setContentHuggingPriority(.required, for: .horizontal)
@@ -432,6 +459,16 @@ class MessageBox: UIView {
 
         // Setup keyboard notifications
         setupKeyboardNotifications()
+
+        // Motion-aware UI: subscribe to biking state changes.
+        #if os(iOS)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleBikingStateChange),
+            name: MotionActivityManager.bikingStateDidChange,
+            object: nil
+        )
+        #endif
     }
     
     private func setupKeyboardNotifications() {
@@ -1835,6 +1872,53 @@ extension MessageBox: UIDocumentPickerDelegate {
         }
     }
 }
+
+// MARK: - Motion-Aware UI (Biking)
+
+#if os(iOS)
+extension MessageBox {
+    @objc private func handleBikingStateChange() {
+        applyBikingLayout(animated: true)
+    }
+
+    /// Enlarges or restores the mic/send and attach/stop buttons based on
+    /// the current biking state. Animated with a spring when `animated` is
+    /// true; snapped immediately otherwise (e.g. on layout passes).
+    func applyBikingLayout(animated: Bool) {
+        let biking = MotionActivityManager.shared.isBiking
+
+        let micSize = biking ? Self.micButtonBikingSize : Self.micButtonNormalSize
+        let attSize = biking ? Self.attachButtonBikingSize : Self.attachButtonNormalSize
+
+        micButtonWidthConstraint?.constant = micSize
+        micButtonHeightConstraint?.constant = micSize
+        attachButtonWidthConstraint?.constant = attSize
+        attachButtonHeightConstraint?.constant = attSize
+
+        // Corner radii track half the button size so they stay circular.
+        let applyCornerRadii = {
+            self.micButton.layer.cornerRadius = micSize / 2
+            self.attachButton.layer.cornerRadius = attSize / 2
+        }
+
+        if animated {
+            UIView.animate(
+                withDuration: 0.5,
+                delay: 0,
+                usingSpringWithDamping: 0.7,
+                initialSpringVelocity: 0.3,
+                options: [.allowUserInteraction]
+            ) {
+                applyCornerRadii()
+                self.layoutIfNeeded()
+            }
+        } else {
+            applyCornerRadii()
+            self.layoutIfNeeded()
+        }
+    }
+}
+#endif
 
 /// UITextView subclass that fires `onShiftReturn` when a hardware-keyboard
 /// Shift+Return is pressed. UITextView normally consumes Return to insert
