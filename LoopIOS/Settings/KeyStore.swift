@@ -51,6 +51,7 @@ final class KeyStore {
         case agentMail                   = "AGENT_MAIL_API_KEY"
         case agentMailInbox              = "AGENT_MAIL_INBOX"
         case serpAPI                     = "SERPAPI_API_KEY"
+        case podsips                    = "PODSIPS_API_KEY"
 
         /// User-facing label shown in Settings.
         var displayName: String {
@@ -83,6 +84,7 @@ final class KeyStore {
             case .agentMail:                   return "AgentMail API Key"
             case .agentMailInbox:              return "AgentMail Inbox"
             case .serpAPI:                     return "SerpAPI Key"
+            case .podsips:                    return "PodSips"
             }
         }
 
@@ -117,6 +119,7 @@ final class KeyStore {
             case .agentMail:                   return "am_… key from agentmail.to · lets Loop read its inbox and send email (with attachments) on your behalf"
             case .agentMailInbox:              return "Optional. The inbox to send from, e.g. loop_email@agentmail.to. Leave blank and Loop will reuse your first inbox or create one automatically."
             case .serpAPI:                     return "Free key from serpapi.com → powers web image search (Google Images)"
+            case .podsips:                    return "API key from developer.podsips.com → podcast transcript search, timestamped clips by topic"
             }
         }
     }
@@ -135,6 +138,7 @@ final class KeyStore {
         case googleWorkspace
         case agentMail
         case serpAPI
+        case podsips
 
         /// Row title in the list + window title in the editor.
         var displayName: String {
@@ -156,6 +160,7 @@ final class KeyStore {
             case .googleWorkspace: return "Google Workspace"
             case .agentMail:    return "AgentMail"
             case .serpAPI:      return "SerpAPI"
+            case .podsips:     return "PodSips"
             }
         }
 
@@ -182,6 +187,7 @@ final class KeyStore {
             case .googleWorkspace: return "Google Drive, Gmail, and Calendar via OAuth2 access token"
             case .agentMail:    return "Read Loop's email inbox and send email (with attachments) via agentmail.to"
             case .serpAPI:      return "Search the web for images (Google Images) and render them inline"
+            case .podsips:     return "Podcast transcript search API — get timestamped clips by topic"
             }
         }
 
@@ -209,6 +215,7 @@ final class KeyStore {
             case .googleWorkspace: return [.googleWorkspaceAccessToken, .googleWorkspaceRefreshToken, .googleWorkspaceClientId, .googleWorkspaceClientSecret]
             case .agentMail:    return [.agentMail, .agentMailInbox]
             case .serpAPI:      return [.serpAPI]
+            case .podsips:     return [.podsips]
             }
         }
 

@@ -50,7 +50,7 @@ enum BundledSkillSeeds {
         }
     }
 
-    static let all: [Seed] = [polymarketTrending, runSSHCommand, claudeCode]
+    static let all: [Seed] = [polymarketTrending, runSSHCommand, claudeCode, podsipsSearch]
 
     // MARK: - Polymarket
 
@@ -307,6 +307,110 @@ enum BundledSkillSeeds {
                     error: (result && result.error) || "run_ssh_command failed",
                     detail: result
                 };
+            } catch (e) {
+                return { status: "error", error: String(e) };
+            }
+        }
+        """#
+    )
+
+    // MARK: - PodSips Search
+
+    /// Search podcast transcripts by topic via the PodSips API. Returns
+    /// timestamped clips with speaker names, episode metadata, and context.
+    private static let podsipsSearch = Seed(
+        name: "podsips_search",
+        description: "Search podcast transcripts by topic and get back timestamped clips with speaker names, episode metadata, and context. Powered by PodSips API.",
+        parameters: [
+            "type": "object",
+            "properties": [
+                "query": [
+                    "type": "string",
+                    "description": "Natural-language topic or idea to search for across podcast transcripts (e.g. 'AI safety', 'founding lessons from Stripe', 'mental models for decision making')"
+                ],
+                "limit": [
+                    "type": "integer",
+                    "description": "Max number of results to return. Default 5."
+                ]
+            ],
+            "required": ["query"]
+        ],
+        source: #"""
+        // podsips_search — search podcast transcripts via PodSips API.
+        //
+        // Reads the PODSIPS_API_KEY from the Keychain via host.getApiKey and
+        // hits the PodSips search endpoint for timestamped transcript clips.
+        async function run(args, host) {
+            const query = args.query;
+            if (!query) {
+                return { status: "error", error: "The `query` argument is required." };
+            }
+
+            const apiKey = host.getApiKey("podsips");
+            if (!apiKey) {
+                return {
+                    status: "error",
+                    error: "No PodSips API key configured. Add one in Settings → Keys → PodSips. Get a key at https://developer.podsips.com/"
+                };
+            }
+
+            const limit = (args.limit && args.limit > 0) ? Math.min(args.limit, 20) : 5;
+            host.log("Searching podcasts for \"" + query + "\"...");
+
+            var url = "https://api.podsips.com/api/v1/search?q=" + encodeURIComponent(query);
+
+            try {
+                var res = await host.http({
+                    url: url,
+                    method: "GET",
+                    headers: {
+                        "Authorization": "Bearer " + apiKey,
+                        "Accept": "application/json"
+                    }
+                });
+
+                if (res.status === 401 || res.status === 403) {
+                    return {
+                        status: "error",
+                        error: "PodSips API key was rejected (HTTP " + res.status + "). Check Settings → Keys → PodSips."
+                    };
+                }
+
+                if (res.status === 429) {
+                    return { status: "error", error: "PodSips rate limit hit. Try again shortly." };
+                }
+
+                if (res.status !== 200 || !res.json) {
+                    return {
+                        status: "error",
+                        error: "PodSips returned HTTP " + res.status,
+                        body: (res.body || "").slice(0, 500)
+                    };
+                }
+
+                var results = Array.isArray(res.json) ? res.json
+                    : (res.json.results || res.json.clips || res.json.data || []);
+
+                var clips = results.slice(0, limit).map(function(r) {
+                    return {
+                        podcast: r.podcast || r.show_name || r.series_title || "",
+                        episode: r.episode || r.episode_title || "",
+                        speaker: r.speaker || r.speaker_name || "",
+                        timestamp: r.timestamp || r.start_time || "",
+                        text: r.text || r.transcript || r.snippet || "",
+                        context: r.context || r.surrounding_text || ""
+                    };
+                });
+
+                var podcastSet = {};
+                clips.forEach(function(c) { if (c.podcast) podcastSet[c.podcast] = true; });
+                var podcastCount = Object.keys(podcastSet).length;
+
+                var summary = "Found " + clips.length + " clip" + (clips.length !== 1 ? "s" : "")
+                    + " about \"" + query + "\""
+                    + (podcastCount > 0 ? " across " + podcastCount + " podcast" + (podcastCount !== 1 ? "s" : "") : "");
+
+                return { summary: summary, clips: clips };
             } catch (e) {
                 return { status: "error", error: String(e) };
             }
