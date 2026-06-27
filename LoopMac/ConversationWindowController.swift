@@ -92,6 +92,8 @@ final class ConversationWindowController: NSWindowController, ConversationPresen
     private(set) var storyAttachments: [String: StoryAttachment] = [:]
     private static let storyMessageIdPrefix = "story-"
     private var storyPlayer: StoryPlayerWindowController?
+    /// Retains the open card-detail window so it isn't deallocated mid-display.
+    private var cardDetail: MacCardDetailWindowController?
 
     /// The markdown editor currently slid up over the chat pane, if any, plus
     /// the top constraint we animate to drive the vertical slide.
@@ -101,9 +103,11 @@ final class ConversationWindowController: NSWindowController, ConversationPresen
     init(initialCoordinator: VoiceLoopCoordinator, recorder: RecorderWindowController) {
         self.recorder = recorder
 
-        // Wider default than the old single-pane design so the sidebar has a
-        // comfortable home; min width keeps the chat readable when collapsed.
-        let rect = NSRect(x: 0, y: 0, width: 780, height: 640)
+        // Roomy default so the chat + card list have space on launch; the
+        // sidebar starts collapsed (see configureSplitView), so this width is
+        // all chat pane. Tall enough to show the orb plus a few feed cards.
+        // Min width keeps the chat readable when resized down.
+        let rect = NSRect(x: 0, y: 0, width: 1080, height: 920)
         let style: NSWindow.StyleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
         let window = NSWindow(contentRect: rect, styleMask: style, backing: .buffered, defer: false)
         window.title = "Loop"
@@ -118,6 +122,11 @@ final class ConversationWindowController: NSWindowController, ConversationPresen
         window.isOpaque = true
         window.backgroundColor = NSColor.windowBackgroundColor
         window.isReleasedWhenClosed = false
+        // Don't let macOS state-restoration revive a stale (often tiny) frame
+        // from a prior session and stomp the default size above. Persist the
+        // size ourselves via a frame autosave name instead — empty on first
+        // launch, so the roomy default applies, then remembers user resizes.
+        window.isRestorable = false
         // Follow the user across Spaces: when a send/response orders the
         // window front from the recorder bar (which joins all Spaces), bring
         // the chat to the active desktop instead of yanking the user back to
@@ -129,6 +138,18 @@ final class ConversationWindowController: NSWindowController, ConversationPresen
         configureSplitView()
         configureToolbar()
         wireSidebar()
+
+        // Assigning the split view as `contentViewController` (in
+        // configureSplitView) makes AppKit shrink the window to that view's
+        // small autolayout fitting size, stomping the contentRect default —
+        // which is why the window launched tiny. Re-assert a tall launch size
+        // now that all content is installed, clamped to the visible screen so
+        // it never opens off-screen. `showAndReload` centers it on first show.
+        let screen = window.screen ?? NSScreen.main
+        let visible = screen?.visibleFrame.size ?? NSSize(width: 1280, height: 1040)
+        let launchSize = NSSize(width: min(1080, visible.width - 40),
+                                height: min(1040, visible.height - 40) * 0.75)
+        window.setContentSize(launchSize)
 
         // SlackSkill needs a UI host so write tools can present a
         // confirmation alert before chat.postMessage fires. Mac chat is
@@ -213,6 +234,20 @@ final class ConversationWindowController: NSWindowController, ConversationPresen
             self,
             selector: #selector(storyPlayerDidClose(_:)),
             name: .storyPlayerDidClose,
+            object: nil
+        )
+        // Refresh the empty new-tab card list when cards are added or archived
+        // (by the agent, another tab, or iOS via the shared workspace).
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(cardStoreDidChange),
+            name: CardStore.cardAddedNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(cardStoreDidChange),
+            name: CardStore.cardUpdatedNotification,
             object: nil
         )
     }
@@ -377,6 +412,9 @@ final class ConversationWindowController: NSWindowController, ConversationPresen
         sidebarItem.maximumThickness = 360
         sidebarItem.canCollapse = true
         sidebarItem.holdingPriority = NSLayoutConstraint.Priority(rawValue: 250)
+        // Start collapsed: launch into a clean full-width chat; the user opens
+        // the sidebar via the toolbar's toggle button when they want it.
+        sidebarItem.isCollapsed = true
         split.addSplitViewItem(sidebarItem)
 
         let contentItem = NSSplitViewItem(viewController: chatVC)
@@ -1030,7 +1068,54 @@ final class ConversationWindowController: NSWindowController, ConversationPresen
                 continue
             }
         }
+        if messages.isEmpty {
+            populateEmptyStateCards()
+        }
         scrollToBottom()
+    }
+
+    /// On the empty new-tab screen, show the scannable feed-card list under the
+    /// orb — the AppKit mirror of the iOS card list, fed by the shared
+    /// CardStore (same workspace, same cards). Hidden the moment the
+    /// conversation has any messages.
+    private func populateEmptyStateCards() {
+        let cards = CardStore.shared.feedCards
+        guard !cards.isEmpty else { return }
+
+        let list = MacFeedCardListView()
+        list.onTap = { [weak self] card in self?.openCardDetail(card) }
+        list.onArchive = { [weak self] card in self?.archiveCard(card) }
+        list.setCards(cards)
+        stack.addArrangedSubview(list)
+        // Span the pane width (minus the stack's edge insets) so rows fill the
+        // available space, capped so they don't stretch absurdly wide.
+        let fill = list.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -32)
+        fill.priority = .defaultHigh
+        let cap = list.widthAnchor.constraint(lessThanOrEqualToConstant: 560)
+        NSLayoutConstraint.activate([fill, cap])
+    }
+
+    private func openCardDetail(_ card: Card) {
+        let detail = MacCardDetailWindowController(card: card) { [weak self] c in
+            self?.archiveCard(c)
+        }
+        cardDetail = detail
+        detail.present()
+    }
+
+    private func archiveCard(_ card: Card) {
+        CardStore.shared.updateState(id: card.id, state: .archived)
+        // Refresh the empty state if we're still showing it.
+        if lastRebuiltMessages.isEmpty {
+            reloadFromStore()
+        }
+    }
+
+    @objc private func cardStoreDidChange() {
+        // Only the empty new-tab screen shows cards; refresh it in place when a
+        // card is added/archived elsewhere (iOS, another tab, the agent).
+        guard lastRebuiltMessages.isEmpty else { return }
+        DispatchQueue.main.async { [weak self] in self?.reloadFromStore() }
     }
 
     private func retryImage(attachment: ImageAttachment) {
@@ -3023,7 +3108,12 @@ final class ChatLinkTextView: NSTextView {
         }
         layoutManager.ensureLayout(for: container)
         let used = layoutManager.usedRect(for: container).size
-        return NSSize(width: ceil(used.width), height: ceil(used.height))
+        // `usedRect` measures glyphs only — it excludes `textContainerInset`.
+        // Code blocks set a 12pt inset, so without adding it back the view
+        // reports ~24pt too short and clips its bottom line(s).
+        let inset = textContainerInset
+        return NSSize(width: ceil(used.width) + inset.width * 2,
+                      height: ceil(used.height) + inset.height * 2)
     }
 
     override func didChangeText() {

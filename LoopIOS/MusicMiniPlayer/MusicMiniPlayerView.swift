@@ -305,6 +305,7 @@ final class MusicMiniPlayerView: UIView {
     private func setupGestures() {
         // Tap pill to expand
         let pillTap = UITapGestureRecognizer(target: self, action: #selector(expandFromPill))
+        pillTap.delegate = self
         pillContainer.addGestureRecognizer(pillTap)
         pillContainer.isUserInteractionEnabled = true
 
@@ -316,15 +317,18 @@ final class MusicMiniPlayerView: UIView {
         // Long press pill to open in Apple Music
         let pillLongPress = UILongPressGestureRecognizer(target: self, action: #selector(handlePillLongPress(_:)))
         pillLongPress.minimumPressDuration = 0.5
+        pillLongPress.delegate = self
         pillContainer.addGestureRecognizer(pillLongPress)
 
         // Swipe left/right on pill to dismiss
         let pillSwipeLeft = UISwipeGestureRecognizer(target: self, action: #selector(dismissPlayer))
         pillSwipeLeft.direction = .left
+        pillSwipeLeft.delegate = self
         pillContainer.addGestureRecognizer(pillSwipeLeft)
 
         let pillSwipeRight = UISwipeGestureRecognizer(target: self, action: #selector(dismissPlayer))
         pillSwipeRight.direction = .right
+        pillSwipeRight.delegate = self
         pillContainer.addGestureRecognizer(pillSwipeRight)
     }
 
@@ -460,6 +464,12 @@ final class MusicMiniPlayerView: UIView {
         let oldState = displayState
         displayState = state
 
+        // Our intrinsic height depends on `displayState`. Without invalidating,
+        // the view stays at its initial (hidden → 0pt) height, so the pill/card
+        // render outside our bounds (every banner ancestor has
+        // clipsToBounds = false) and every touch misses in hitTest.
+        invalidateIntrinsicContentSize()
+
         let work: () -> Void
         switch state {
         case .hidden:
@@ -527,6 +537,25 @@ final class MusicMiniPlayerView: UIView {
         CGSize(width: UIView.noIntrinsicMetric, height: currentHeight)
     }
 
+    /// The pill and card can extend past our bounds because every ancestor in
+    /// the banner stack sets `clipsToBounds = false`. The default `hitTest`
+    /// clips to our bounds, so taps on the visually-correct control would miss.
+    /// Forward to whichever container is currently shown.
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        if let hit = super.hitTest(point, with: event), hit !== self {
+            return hit
+        }
+        let container = displayState == .expanded ? cardContainer : pillContainer
+        guard !container.isHidden, container.alpha > 0.01 else {
+            return super.hitTest(point, with: event)
+        }
+        let converted = convert(point, to: container)
+        if let hit = container.hitTest(converted, with: event) {
+            return hit
+        }
+        return super.hitTest(point, with: event)
+    }
+
     // MARK: - Actions
 
     @objc private func togglePlayPause() {
@@ -579,9 +608,10 @@ final class MusicMiniPlayerView: UIView {
         guard let entry = player.queue.currentEntry else { return nil }
         switch entry.item {
         case .song(let song):
-            let id = song.id.rawValue
-            guard !id.hasPrefix("i.") else { return nil }
-            return URL(string: "music://music.apple.com/song/\(id)")
+            // Use MusicKit's canonical catalog URL (storefront + full path)
+            // and swap the scheme so it opens in the Apple Music app. Library
+            // songs have no catalog URL, so this returns nil and we fall back.
+            return MusicController.appleMusicScheme(from: song.url)
         default:
             return nil
         }
@@ -608,6 +638,22 @@ final class MusicMiniPlayerView: UIView {
     /// Reset user dismiss flag (e.g. when new music starts playing)
     func resetDismiss() {
         isUserDismissed = false
+    }
+}
+
+// MARK: - UIGestureRecognizerDelegate
+
+extension MusicMiniPlayerView: UIGestureRecognizerDelegate {
+    /// Pill-level gestures (tap-to-expand, long-press, swipe-to-dismiss) live
+    /// on the whole pill container, which also holds the play/pause button.
+    /// Without this, the container's tap gesture cancels the button's touch
+    /// (`cancelsTouchesInView` defaults to `true`), so the play/pause button
+    /// never fires. Reject any pill gesture whose touch lands on a `UIControl`
+    /// so buttons get their taps and the rest of the pill still expands.
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldReceive touch: UITouch) -> Bool {
+        guard let touched = touch.view else { return true }
+        return !touched.isDescendant(of: pillPlayPauseButton)
     }
 }
 

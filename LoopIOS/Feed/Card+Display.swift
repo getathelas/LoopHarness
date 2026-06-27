@@ -2,58 +2,16 @@
 //  Card+Display.swift
 //  Loop
 //
-//  UI-facing derivations for a Card: the one-line summary, the kind badge, and
-//  the icon tile's symbol + tint. The model itself stays UI-agnostic; these
-//  inferred values back both the card list rows and the detail view.
+//  UIKit-facing derivation for a Card: the icon tile's symbol + tint. The
+//  one-line summary and kind badge are platform-agnostic and live on the model
+//  in Card.swift; only the color-typed icon stays here. AppKit has its own
+//  mirror in LoopMac/Card+DisplayMac.swift.
 //
 
 #if os(iOS)
 import UIKit
 
 extension Card {
-
-    /// First meaningful line of the body, stripped of markdown markers, used as
-    /// the one-line summary under the title.
-    var displaySubtitle: String? {
-        for raw in body.split(whereSeparator: \.isNewline) {
-            var s = raw.trimmingCharacters(in: .whitespaces)
-            // Drop leading heading / list / quote markers.
-            while let first = s.first, "#-*•>".contains(first) {
-                s = String(s.dropFirst()).trimmingCharacters(in: .whitespaces)
-            }
-            // Drop a leading checkbox.
-            if s.hasPrefix("[ ]") || s.hasPrefix("[x]") || s.hasPrefix("[X]") {
-                s = String(s.dropFirst(3)).trimmingCharacters(in: .whitespaces)
-            }
-            // Drop a leading "1." style ordinal.
-            if let dot = s.firstIndex(of: "."), dot != s.startIndex,
-               s[s.startIndex..<dot].allSatisfy(\.isNumber) {
-                s = String(s[s.index(after: dot)...]).trimmingCharacters(in: .whitespaces)
-            }
-            s = s.replacingOccurrences(of: "**", with: "").replacingOccurrences(of: "`", with: "")
-            if !s.isEmpty { return s }
-        }
-        return nil
-    }
-
-    /// Short uppercase badge describing the card's shape.
-    var displayBadge: String {
-        switch kind {
-        case .image:
-            return "IMAGE"
-        case .markdown:
-            let lower = body.lowercased()
-            if lower.contains("- [ ]") || lower.contains("- [x]") || lower.contains("* [ ]") {
-                return "CHECKLIST"
-            }
-            let bulletLines = body.split(whereSeparator: \.isNewline).filter { line in
-                let t = line.trimmingCharacters(in: .whitespaces)
-                guard let first = t.first else { return false }
-                return first == "-" || first == "*" || first == "•"
-            }
-            return bulletLines.count >= 2 ? "LIST" : "NOTE"
-        }
-    }
 
     /// SF Symbol + tint for the icon tile, inferred from the title and tags.
     var displayIcon: (symbol: String, tint: UIColor) {

@@ -341,6 +341,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 ScheduledTasksWindowController.shared.show()
             case "microphone":
                 MicrophoneSettingsWindowController.shared.show()
+            case "ssh":
+                SSHSettingsWindowController.shared.show()
+            case "backends", "execution", "execution_backend":
+                ExecutionBackendsWindowController.shared.show()
             case "files", "workspace", "conversations", "skills", "agent", "model":
                 // Mac doesn't have these as discrete windows. Surface the
                 // conversation window so the user has somewhere to go.
@@ -520,6 +524,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         subagentsItem.target = self
         settingsMenu.addItem(subagentsItem)
+
+        let executionBackendItem = NSMenuItem(
+            title: "Execution Backend…",
+            action: #selector(openExecutionBackends(_:)),
+            keyEquivalent: ""
+        )
+        executionBackendItem.target = self
+        settingsMenu.addItem(executionBackendItem)
+
+        let sshItem = NSMenuItem(
+            title: "SSH…",
+            action: #selector(openSSHSettings(_:)),
+            keyEquivalent: ""
+        )
+        sshItem.target = self
+        settingsMenu.addItem(sshItem)
 
         settingsMenu.addItem(NSMenuItem.separator())
 
@@ -820,6 +840,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc fileprivate func openSubagents(_ sender: Any?) {
         SubagentsWindowController.shared.show()
+    }
+
+    @objc fileprivate func openExecutionBackends(_ sender: Any?) {
+        ExecutionBackendsWindowController.shared.show()
+    }
+
+    @objc fileprivate func openSSHSettings(_ sender: Any?) {
+        SSHSettingsWindowController.shared.show()
     }
 
     /// Settings → Replay Onboarding…

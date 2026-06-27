@@ -1058,6 +1058,32 @@ final class RecorderFieldEditor: NSTextView {
         super.paste(sender)
     }
 
+    /// Force-enable the Edit ▸ Paste command (and thus Cmd+V) whenever the
+    /// clipboard holds an image or PDF we can stage. NSTextView gates `paste:`
+    /// on `readablePasteboardTypes` intersecting the clipboard — and we
+    /// deliberately strip `.fileURL` from those types, while image bytes
+    /// (PNG/TIFF) were never in them. So for a pure-image clipboard (a
+    /// screenshot, or "Copy Image") AppKit would otherwise disable Paste and
+    /// swallow Cmd+V before our `paste(_:)` override ever runs. Letting the
+    /// command validate keeps the normal text-paste path untouched (super
+    /// decides those), and routes image/file clipboards into `paste(_:)`.
+    override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
+        if item.action == #selector(NSText.paste(_:)),
+           pasteboardHasStageableAttachment() {
+            return true
+        }
+        return super.validateUserInterfaceItem(item)
+    }
+
+    /// True when the general pasteboard holds something `paste(_:)` can turn
+    /// into an attachment: an image/PDF file URL, or raw image bytes.
+    private func pasteboardHasStageableAttachment(_ pb: NSPasteboard = .general) -> Bool {
+        if firstAcceptableFileURL(on: pb) != nil { return true }
+        if pb.data(forType: .png) != nil { return true }
+        if pb.data(forType: .tiff) != nil { return true }
+        return false
+    }
+
     private func firstAcceptableFileURL(in info: NSDraggingInfo) -> URL? {
         return firstAcceptableFileURL(on: info.draggingPasteboard)
     }

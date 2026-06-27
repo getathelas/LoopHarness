@@ -60,9 +60,10 @@ final class MusicController {
         let albumTitle: String?
         let isInstrumental: Bool
         let selectedBy: Selector
-        let catalogSongId: String?
-        let catalogAlbumId: String?
-        let catalogPlaylistId: String?
+        /// Canonical `https://music.apple.com/...` URL for the now-playing
+        /// item, when it comes from the Apple Music catalog. `nil` for
+        /// library-only content (which has no shareable catalog URL).
+        let catalogURL: URL?
     }
 
     private(set) var nowPlaying: NowPlaying?
@@ -235,7 +236,7 @@ final class MusicController {
                                   artist: song.artistName,
                                   album: song.albumTitle,
                                   selectedBy: selectedBy,
-                                  catalogSongId: targetId.hasPrefix("i.") ? nil : targetId)
+                                  catalogURL: song.url)
             }
 
         case "album":
@@ -262,7 +263,7 @@ final class MusicController {
                                   artist: album.artistName,
                                   album: album.title,
                                   selectedBy: selectedBy,
-                                  catalogAlbumId: targetId.hasPrefix("l.") ? nil : targetId)
+                                  catalogURL: album.url)
             }
 
         case "playlist":
@@ -289,7 +290,7 @@ final class MusicController {
                                   artist: playlist.curatorName,
                                   album: nil,
                                   selectedBy: selectedBy,
-                                  catalogPlaylistId: targetId.hasPrefix("p.") ? nil : targetId)
+                                  catalogURL: playlist.url)
             }
 
         default:
@@ -427,7 +428,7 @@ final class MusicController {
                               artist: song.artistName,
                               album: song.albumTitle,
                               selectedBy: .agent,
-                              catalogSongId: song.id.rawValue)
+                              catalogURL: song.url)
             print("MusicController: setMusicMood calling player.play()…")
             do {
                 try await MusicController.raceWithTimeout(seconds: 6) {
@@ -462,7 +463,7 @@ final class MusicController {
                               artist: playlist.curatorName,
                               album: nil,
                               selectedBy: .agent,
-                              catalogPlaylistId: playlist.id.rawValue)
+                              catalogURL: playlist.url)
             print("MusicController: setMusicMood calling player.play()…")
             do {
                 try await MusicController.raceWithTimeout(seconds: 6) {
@@ -861,38 +862,33 @@ final class MusicController {
                                    artist: String?,
                                    album: String?,
                                    selectedBy: Selector,
-                                   catalogSongId: String? = nil,
-                                   catalogAlbumId: String? = nil,
-                                   catalogPlaylistId: String? = nil) {
+                                   catalogURL: URL? = nil) {
         nowPlaying = NowPlaying(
             title: title,
             artist: artist,
             albumTitle: album,
             isInstrumental: isInstrumentalHint(title: title, album: album),
             selectedBy: selectedBy,
-            catalogSongId: catalogSongId,
-            catalogAlbumId: catalogAlbumId,
-            catalogPlaylistId: catalogPlaylistId
+            catalogURL: catalogURL
         )
     }
 
     /// Build a `music://` deep-link URL for the currently tracked item.
-    /// Returns `nil` when only library-local IDs are available.
+    /// Returns `nil` when only library-local content is playing (no catalog
+    /// URL to deep-link to).
     func appleMusicDeepLinkURL() -> URL? {
-        guard let np = nowPlaying else { return nil }
-        if let songId = np.catalogSongId {
-            if let albumId = np.catalogAlbumId {
-                return URL(string: "music://music.apple.com/album/\(albumId)?i=\(songId)")
-            }
-            return URL(string: "music://music.apple.com/song/\(songId)")
-        }
-        if let albumId = np.catalogAlbumId {
-            return URL(string: "music://music.apple.com/album/\(albumId)")
-        }
-        if let playlistId = np.catalogPlaylistId {
-            return URL(string: "music://music.apple.com/playlist/\(playlistId)")
-        }
-        return nil
+        Self.appleMusicScheme(from: nowPlaying?.catalogURL)
+    }
+
+    /// Convert a canonical `https://music.apple.com/...` URL into a `music://`
+    /// deep link so the OS hands it to the Apple Music app instead of Safari.
+    /// Returns `nil` for any URL that isn't an Apple Music catalog link.
+    static func appleMusicScheme(from url: URL?) -> URL? {
+        guard let url,
+              var comps = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              comps.host == "music.apple.com" else { return nil }
+        comps.scheme = "music"
+        return comps.url
     }
 
     /// Race a MusicKit call against a wall-clock timeout. Throws
