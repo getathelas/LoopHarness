@@ -3633,7 +3633,7 @@ final class MapBubbleView: NSView {
             MapPlaceAnnotation(place: $0)
         }
         mapView.addAnnotations(annotations)
-        mapView.showAnnotations(annotations, animated: false)
+        mapView.showsUserLocation = true
 
         if hasTitle {
             NSLayoutConstraint.activate([
@@ -3656,11 +3656,56 @@ final class MapBubbleView: NSView {
                 mapView.heightAnchor.constraint(equalToConstant: 240),
             ])
         }
+
+        // Fit all pins after layout so the map has valid geometry.
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.fitMapToAnnotations(annotations)
+        }
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
     static let pinReuseId = "MapBubbleViewPin"
+
+    /// Computes a region enclosing all pins with padding.
+    private func fitMapToAnnotations(_ annotations: [MapPlaceAnnotation]) {
+        guard !annotations.isEmpty else { return }
+
+        var minLat = annotations[0].coordinate.latitude
+        var maxLat = minLat
+        var minLon = annotations[0].coordinate.longitude
+        var maxLon = minLon
+
+        for ann in annotations {
+            minLat = min(minLat, ann.coordinate.latitude)
+            maxLat = max(maxLat, ann.coordinate.latitude)
+            minLon = min(minLon, ann.coordinate.longitude)
+            maxLon = max(maxLon, ann.coordinate.longitude)
+        }
+
+        let latDelta = maxLat - minLat
+        let lonDelta = maxLon - minLon
+        let minSpan: Double = 0.005
+        let spanLat = max(latDelta, minSpan)
+        let spanLon = max(lonDelta, minSpan)
+
+        let center = CLLocationCoordinate2D(
+            latitude: (minLat + maxLat) / 2.0,
+            longitude: (minLon + maxLon) / 2.0
+        )
+        let region = MKCoordinateRegion(
+            center: center,
+            span: MKCoordinateSpan(latitudeDelta: spanLat, longitudeDelta: spanLon)
+        )
+        let fitted = mapView.regionThatFits(region)
+        mapView.setRegion(fitted, animated: false)
+
+        let insets = NSEdgeInsets(top: 30, left: 30, bottom: 30, right: 30)
+        mapView.setVisibleMapRect(mapView.visibleMapRect,
+                                  edgePadding: insets,
+                                  animated: false)
+    }
 }
 
 /// MKPointAnnotation that carries the underlying `MapPlace`, used by both

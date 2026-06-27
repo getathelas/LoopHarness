@@ -411,6 +411,9 @@ class MessagingCell: UITableViewCell {
     private static let mapPinReuseId = "MessagingCellMapPin"
     private var mapConstraints: [NSLayoutConstraint] = []
     private var currentMapAttachmentId: String?
+    /// Tracks whether we've already re-fit the map to include the user's
+    /// location blue dot (one-shot per cell render).
+    private var didFitUserLocation = false
 
     // MARK: - Image-gallery views (web image search)
 
@@ -643,10 +646,12 @@ class MessagingCell: UITableViewCell {
         // Map cleanup — drop annotations so a recycled cell doesn't briefly
         // show the previous message's pins.
         mapView.removeAnnotations(mapView.annotations)
+        mapView.showsUserLocation = false
         mapView.isHidden = true
         mapTitleLabel.isHidden = true
         mapTitleLabel.text = nil
         currentMapAttachmentId = nil
+        didFitUserLocation = false
         NSLayoutConstraint.deactivate(mapConstraints)
         mapConstraints.removeAll()
 
@@ -2974,10 +2979,9 @@ class MessagingCell: UITableViewCell {
         }
         mapView.addAnnotations(annotations)
 
-        // Fit the camera to all pins with a little inset so they aren't flush
-        // to the bubble edge. showAnnotations handles both the single-pin
-        // case (zooms to a neighborhood radius) and multi-pin (fits the box).
-        mapView.showAnnotations(annotations, animated: false)
+        // Show the user's current location as a blue dot on the map.
+        mapView.showsUserLocation = true
+        didFitUserLocation = false
 
         // Bubble dimensions — same 240px logical "card width" the image
         // bubble uses, slightly taller to give the map breathing room.
@@ -3011,6 +3015,16 @@ class MessagingCell: UITableViewCell {
             ]
         }
         NSLayoutConstraint.activate(mapConstraints)
+
+        // Fit all pins after constraints are active so the map has a valid
+        // frame to compute the region. Dispatch to the next layout pass to
+        // guarantee geometry is resolved.
+        let pinAnnotations = annotations
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self,
+                  self.currentMapAttachmentId == attachment.id else { return }
+            self.fitMapToAnnotations(pinAnnotations)
+        }
 
         baseModelText = modelLabelText
         modelLabel.text = modelLabelText
@@ -3509,6 +3523,7 @@ private final class MapPlaceAnnotation: MKPointAnnotation {
 extension MessagingCell: MKMapViewDelegate {
     func mapView(_ mapView: MKMapView,
                  viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+        // Return nil for user location so MapKit renders the default blue dot.
         guard annotation is MapPlaceAnnotation else { return nil }
         let v = mapView.dequeueReusableAnnotationView(
             withIdentifier: MessagingCell.mapPinReuseId,
@@ -3533,6 +3548,74 @@ extension MessagingCell: MKMapViewDelegate {
         item.openInMaps(launchOptions: [
             MKLaunchOptionsMapTypeKey: NSNumber(value: MKMapType.standard.rawValue)
         ])
+    }
+
+    func mapView(_ mapView: MKMapView, didUpdate userLocation: MKUserLocation) {
+        guard !didFitUserLocation,
+              currentMapAttachmentId != nil,
+              let loc = userLocation.location,
+              loc.horizontalAccuracy >= 0 else { return }
+        didFitUserLocation = true
+        let placeAnnotations = mapView.annotations.compactMap { $0 as? MapPlaceAnnotation }
+        guard !placeAnnotations.isEmpty else { return }
+        fitMapToAnnotations(placeAnnotations, includingUserLocation: loc.coordinate)
+    }
+
+    // MARK: - Map region fitting
+
+    /// Computes a region that encloses all place pins (and optionally the
+    /// user's location) with generous edge padding so markers aren't flush
+    /// against the bubble border. Handles edge cases: single pin (uses a
+    /// fixed neighborhood radius), tightly clustered pins, and pins spread
+    /// across a large area.
+    func fitMapToAnnotations(_ annotations: [MapPlaceAnnotation],
+                             includingUserLocation userCoord: CLLocationCoordinate2D? = nil) {
+        guard !annotations.isEmpty else { return }
+
+        var minLat = annotations[0].coordinate.latitude
+        var maxLat = minLat
+        var minLon = annotations[0].coordinate.longitude
+        var maxLon = minLon
+
+        for ann in annotations {
+            minLat = min(minLat, ann.coordinate.latitude)
+            maxLat = max(maxLat, ann.coordinate.latitude)
+            minLon = min(minLon, ann.coordinate.longitude)
+            maxLon = max(maxLon, ann.coordinate.longitude)
+        }
+
+        if let uc = userCoord {
+            minLat = min(minLat, uc.latitude)
+            maxLat = max(maxLat, uc.latitude)
+            minLon = min(minLon, uc.longitude)
+            maxLon = max(maxLon, uc.longitude)
+        }
+
+        let latDelta = maxLat - minLat
+        let lonDelta = maxLon - minLon
+
+        // For a single pin (or very tightly clustered pins), use a sensible
+        // default span (~500m neighborhood) instead of zooming to street-level.
+        let minSpan: Double = 0.005  // ~500m
+        let spanLat = max(latDelta, minSpan)
+        let spanLon = max(lonDelta, minSpan)
+
+        let center = CLLocationCoordinate2D(
+            latitude: (minLat + maxLat) / 2.0,
+            longitude: (minLon + maxLon) / 2.0
+        )
+        let region = MKCoordinateRegion(
+            center: center,
+            span: MKCoordinateSpan(latitudeDelta: spanLat, longitudeDelta: spanLon)
+        )
+        let fittedRegion = mapView.regionThatFits(region)
+        mapView.setRegion(fittedRegion, animated: false)
+
+        // Apply edge padding so pins aren't clipped by rounded corners.
+        let insets = UIEdgeInsets(top: 30, left: 30, bottom: 30, right: 30)
+        mapView.setVisibleMapRect(mapView.visibleMapRect,
+                                  edgePadding: insets,
+                                  animated: false)
     }
 }
 
