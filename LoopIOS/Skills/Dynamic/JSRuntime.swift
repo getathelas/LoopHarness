@@ -277,6 +277,14 @@ final class JSRuntime {
             return SkillConfigStore.shared.get(rawKey: key)
         }
 
+        // host.getApiKey(alias) — synchronous read of an API key from the
+        // Keychain via KeyStore. Skills use this to retrieve secrets they need
+        // for authenticated API calls. The alias is a short friendly name
+        // (e.g. "podsips", "exa") mapped to the corresponding KeyStore.Key.
+        let getApiKey: @convention(block) (String) -> String? = { alias in
+            return JSRuntime.resolveApiKey(alias: alias)
+        }
+
         let host = JSValue(newObjectIn: context)
         host?.setObject(log,       forKeyedSubscript: "__log"       as NSString)
         host?.setObject(http,      forKeyedSubscript: "__http"      as NSString)
@@ -285,6 +293,7 @@ final class JSRuntime {
         host?.setObject(callTool,  forKeyedSubscript: "__callTool"  as NSString)
         host?.setObject(callSkill, forKeyedSubscript: "__callSkill" as NSString)
         host?.setObject(getConfig, forKeyedSubscript: "getConfig"   as NSString)
+        host?.setObject(getApiKey, forKeyedSubscript: "getApiKey"   as NSString)
         context.setObject(host, forKeyedSubscript: "host" as NSString)
     }
 
@@ -486,5 +495,29 @@ final class JSRuntime {
                 }
             }
         }
+    }
+
+    // MARK: - API key resolution
+
+    /// Maps a short friendly alias to a `KeyStore.Key` and returns the stored
+    /// value (or nil if not configured). Called synchronously from the JS
+    /// runtime via `host.getApiKey(alias)`.
+    private static let aliasToKey: [String: KeyStore.Key] = [
+        "podsips":     .podsips,
+        "exa":         .exa,
+        "openai":      .openAI,
+        "anthropic":   .anthropic,
+        "fireworks":   .fireworks,
+        "deepgram":    .deepgram,
+        "elevenlabs":  .elevenLabs,
+        "cursor":      .cursor,
+        "serpapi":     .serpAPI,
+        "agentmail":   .agentMail,
+    ]
+
+    static func resolveApiKey(alias: String) -> String? {
+        let normalized = alias.lowercased()
+        guard let key = aliasToKey[normalized] else { return nil }
+        return KeyStore.shared.value(for: key)
     }
 }
