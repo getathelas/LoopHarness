@@ -514,6 +514,7 @@ Tips:
         case .agentMail:                   return "agentmail"
         case .agentMailInbox:              return "agentmail_inbox"
         case .serpAPI:                     return "serpapi"
+        case .podsips:                     return "podsips"
         }
     }
 

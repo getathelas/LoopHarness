@@ -80,6 +80,12 @@ class MessagingVC: UIViewController {
     /// Maximum left-slide before rubber-banding kicks in — the column width the
     /// timestamps settle into while the swipe is held.
     private let timeRevealMax: CGFloat = 72
+    /// Vertical content offset captured when a timestamp-reveal swipe starts.
+    /// The transcript is pinned to this while the swipe is held so it slides
+    /// purely sideways. Without it, settling the scroll mid-swipe lets the
+    /// self-sizing cells resolve their estimated heights and lurch the content
+    /// to the bottom. Non-nil only for the duration of an active reveal.
+    private var timeRevealAnchorOffset: CGPoint?
     let messageBox = MessageBox()
     /// Slim pill at the top of the screen showing "N sub-agents running". Tap
     /// presents `SubAgentInspectorVC`. Collapses to zero height when no
@@ -3667,12 +3673,19 @@ extension MessagingVC {
     @objc func handleTimeRevealPan(_ pan: UIPanGestureRecognizer) {
         switch pan.state {
         case .began:
+            // Freeze the vertical scroll position for the whole gesture. Just
+            // toggling `isScrollEnabled` isn't enough: resolving estimated row
+            // heights can still adjust the offset programmatically, which is
+            // what jumps the transcript to the bottom — `scrollViewDidScroll`
+            // snaps it back to this anchor.
+            timeRevealAnchorOffset = tableView.contentOffset
             tableView.isScrollEnabled = false
             applyTimeReveal(rubberBanded(max(0, -pan.translation(in: tableView).x)))
         case .changed:
             applyTimeReveal(rubberBanded(max(0, -pan.translation(in: tableView).x)))
         case .ended, .cancelled, .failed:
             tableView.isScrollEnabled = true
+            timeRevealAnchorOffset = nil
             UIView.animate(withDuration: 0.32, delay: 0,
                            usingSpringWithDamping: 0.82, initialSpringVelocity: 0,
                            options: [.allowUserInteraction, .beginFromCurrentState]) {
@@ -3695,6 +3708,15 @@ extension MessagingVC {
     private func rubberBanded(_ raw: CGFloat) -> CGFloat {
         guard raw > timeRevealMax else { return raw }
         return timeRevealMax + (raw - timeRevealMax) * 0.18
+    }
+
+    /// While a timestamp-reveal swipe is held, hold the transcript at the
+    /// offset captured on `.began` so it can't drift or jump vertically.
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        guard let anchor = timeRevealAnchorOffset, scrollView === tableView else { return }
+        if scrollView.contentOffset != anchor {
+            scrollView.setContentOffset(anchor, animated: false)
+        }
     }
 }
 
@@ -3725,13 +3747,19 @@ extension MessagingVC: UIGestureRecognizerDelegate {
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
         // The reveal pan accepts touches anywhere on the transcript, EXCEPT
-        // inside an image-search gallery — a horizontal swipe there should
-        // scroll the thumbnails, not drag the whole transcript to reveal
-        // timestamps.
+        // inside an inner horizontally-scrollable view — the image-search
+        // gallery, or an inline markdown table wide enough to scroll. There a
+        // horizontal swipe should pan that view's own content, and is the
+        // top-most element under the finger, so it wins outright rather than
+        // also dragging the whole transcript to reveal timestamps.
         if gestureRecognizer == timeRevealPan {
             var v: UIView? = touch.view
-            while let cur = v {
+            while let cur = v, cur !== tableView {
                 if cur is ImageGalleryScrollView { return false }
+                if let scroll = cur as? UIScrollView,
+                   scroll.contentSize.width > scroll.bounds.width + 1 {
+                    return false
+                }
                 v = cur.superview
             }
             return true

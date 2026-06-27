@@ -3568,7 +3568,7 @@ extension MessagingCell: MKMapViewDelegate {
     /// against the bubble border. Handles edge cases: single pin (uses a
     /// fixed neighborhood radius), tightly clustered pins, and pins spread
     /// across a large area.
-    func fitMapToAnnotations(_ annotations: [MapPlaceAnnotation],
+    fileprivate func fitMapToAnnotations(_ annotations: [MapPlaceAnnotation],
                              includingUserLocation userCoord: CLLocationCoordinate2D? = nil) {
         guard !annotations.isEmpty else { return }
 
