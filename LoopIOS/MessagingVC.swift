@@ -220,6 +220,10 @@ When the user asks how you work, what you can do, or how you're built, read `ABO
     private weak var sidebarMenuButton: UIButton?
     private var newChatBarButton: UIBarButtonItem?
     private var settingsBarButton: UIBarButtonItem?
+    /// Microphone that starts a realtime voice session. On the empty Home
+    /// screen it opens a global session; with a thread on screen it scopes the
+    /// session to that conversation.
+    private var micBarButton: UIBarButtonItem?
 
     /// Composed chrome state. The two locks below are resolved together in
     /// `applyChromeState()` so neither clobbers the other:
@@ -2757,10 +2761,20 @@ extension MessagingVC {
         )
         settingsButton.tintColor = .secondaryLabel
 
-        // Order: edit (leading), speaker, settings (trailing).
-        self.navigationItem.rightBarButtonItems = [editButton, muteButton!, settingsButton]
+        let micButton = UIBarButtonItem(
+            image: UIImage(systemName: "mic.circle", withConfiguration: inlineSymbolConfig),
+            style: .plain,
+            target: self,
+            action: #selector(micButtonTapped)
+        )
+        micButton.tintColor = .secondaryLabel
+        micButton.accessibilityLabel = "Start voice session"
+
+        // Order: edit (leading), mic, speaker, settings (trailing).
+        self.navigationItem.rightBarButtonItems = [editButton, micButton, muteButton!, settingsButton]
         self.newChatBarButton = editButton
         self.settingsBarButton = settingsButton
+        self.micBarButton = micButton
 
         // Lock the chrome up front if onboarding hasn't finished yet, so the
         // controls don't flash enabled for the beat before `resumeIfNeeded()`
@@ -3187,6 +3201,20 @@ extension MessagingVC {
         let nav = UINavigationController(rootViewController: settings)
         nav.modalPresentationStyle = .formSheet
         present(nav, animated: true)
+    }
+
+    /// Start a realtime voice session. Scoped to the current thread when one is
+    /// on screen (a non-empty conversation); otherwise a global session that
+    /// can create and route across threads.
+    @objc func micButtonTapped() {
+        let scope: RealtimeVoiceSession.Scope
+        if let conversation = currentConversationEntity, !currentConversationIsEmpty() {
+            scope = .thread(id: conversation.id, title: conversation.title)
+        } else {
+            scope = .global
+        }
+        let voiceVC = VoiceSessionViewController(scope: scope)
+        present(voiceVC, animated: true)
     }
 
     @objc func rightBarButtonTapped() {
