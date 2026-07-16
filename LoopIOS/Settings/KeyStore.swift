@@ -29,6 +29,8 @@ final class KeyStore {
         case openAI         = "OPENAI_API_KEY"
         case anthropic      = "ANTHROPIC_API_KEY"
         case fireworks      = "FIREWORKS_API_KEY"
+        case thinky         = "THINKY_API_KEY"
+        case thinkyModelPath = "THINKY_MODEL_PATH"
         case cursor         = "CURSOR_API_KEY"
         case obsidianAPI    = "OBSIDIAN_API_KEY"
         case obsidianBaseURL = "OBSIDIAN_BASE_URL"
@@ -61,6 +63,8 @@ final class KeyStore {
             case .openAI:                 return "OpenAI"
             case .anthropic:              return "Anthropic"
             case .fireworks:              return "Fireworks"
+            case .thinky:                 return "Thinking Machines"
+            case .thinkyModelPath:        return "Thinking Machines Model Path"
             case .cursor:                 return "Cursor"
             case .obsidianAPI:            return "Obsidian API Key"
             case .obsidianBaseURL:        return "Obsidian Base URL"
@@ -95,6 +99,8 @@ final class KeyStore {
             case .openAI:                 return "Image generation + OpenAI TTS, and GPT models for the agent"
             case .anthropic:              return "Claude models for the agent"
             case .fireworks:              return "Fireworks inference platform (Kimi K2.6, etc.)"
+            case .thinky:                 return "Thinking Machines Tinker inference (OpenAI-compatible)"
+            case .thinkyModelPath:        return "Tinker sampler checkpoint path, e.g. tinker://…/sampler_weights/000080"
             case .cursor:                 return "Cursor agent integration"
             case .obsidianAPI:            return "Bearer token for the Obsidian relay"
             case .obsidianBaseURL:        return "Public URL of the Obsidian relay"
@@ -127,7 +133,7 @@ final class KeyStore {
     /// second). Adding a new key means: (a) add the `Key` case above, (b)
     /// either add a new `Service` case here or extend an existing one's `keys`.
     enum Service: String, CaseIterable {
-        case openAI, anthropic, fireworks, deepgram, elevenLabs, exa
+        case openAI, anthropic, fireworks, thinky, deepgram, elevenLabs, exa
         case cursor, devin
         case github, slack, notion, obsidian
         case twitter
@@ -142,6 +148,7 @@ final class KeyStore {
             case .openAI:     return "OpenAI"
             case .anthropic:  return "Anthropic"
             case .fireworks:  return "Fireworks"
+            case .thinky:     return "Thinking Machines"
             case .deepgram:   return "Deepgram"
             case .elevenLabs: return "ElevenLabs"
             case .exa:        return "Exa"
@@ -168,6 +175,7 @@ final class KeyStore {
             case .openAI:     return "Image generation, OpenAI TTS, and GPT models for the agent"
             case .anthropic:  return "Claude models for the agent"
             case .fireworks:  return "Fireworks inference platform — run Kimi K2.6 and other open models via Fireworks"
+            case .thinky:     return "Thinking Machines Tinker — run your own fine-tuned model checkpoints via the OpenAI-compatible API"
             case .deepgram:   return "Streaming STT + Aura TTS"
             case .elevenLabs: return "Expressive TTS voices"
             case .exa:        return "Web search + answer skill"
@@ -195,6 +203,7 @@ final class KeyStore {
             case .openAI:     return [.openAI]
             case .anthropic:  return [.anthropic]
             case .fireworks:  return [.fireworks]
+            case .thinky:     return [.thinky, .thinkyModelPath]
             case .deepgram:   return [.deepgram]
             case .elevenLabs: return [.elevenLabs]
             case .exa:        return [.exa]
@@ -330,7 +339,7 @@ final class KeyStore {
         // hide and the URL is the whole point. Same for the Devin org id,
         // which is a `org-…` identifier (not a secret) the user needs to be
         // able to read back when verifying their setup.
-        if key == .obsidianBaseURL || key == .obsidianVaultName || key == .githubBaseURL || key == .devinOrgID || key == .agentMailInbox {
+        if key == .obsidianBaseURL || key == .obsidianVaultName || key == .githubBaseURL || key == .devinOrgID || key == .agentMailInbox || key == .thinkyModelPath {
             return raw
         }
         let suffixLen = 4

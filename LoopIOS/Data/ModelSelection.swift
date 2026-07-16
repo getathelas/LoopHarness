@@ -13,6 +13,7 @@
 //    .openAI    → OpenAIChat   (direct, user's OPENAI_API_KEY)
 //    .anthropic → AnthropicChat (direct, user's ANTHROPIC_API_KEY)
 //    .fireworks → FireworksChat  (direct, user's FIREWORKS_API_KEY)
+//    .thinky    → TinkerChat    (direct, user's THINKY_API_KEY + model path)
 //  Reachability still wins — offline always falls back to Apple, since the
 //  hosted providers can't work without a network. The selection is just the
 //  user's *preferred* model when the network is available.
@@ -48,6 +49,7 @@ enum ModelProvider: String, CaseIterable {
             (.anthropic, .anthropic),
             (.openAI, .openAI),
             (.fireworks, .fireworks),
+            (.thinky, .thinky),
         ]
         for (provider, key) in ranked {
             if KeyStore.shared.source(for: key) != .missing {
@@ -66,6 +68,7 @@ enum ModelProvider: String, CaseIterable {
     case openAI
     case anthropic
     case fireworks
+    case thinky
 
     var displayName: String {
         switch self {
@@ -73,6 +76,7 @@ enum ModelProvider: String, CaseIterable {
         case .openAI:    return "OpenAI"
         case .anthropic: return "Anthropic"
         case .fireworks: return "Fireworks"
+        case .thinky:    return "Thinking Machines"
         }
     }
 }
@@ -97,6 +101,7 @@ enum ModelSelection: String, CaseIterable {
     // Fireworks — models served via Fireworks inference.
     case fireworksKimiK26 = "fireworksKimiK26"
     case fireworksGLM52  = "fireworksGLM52"
+    case tinker = "tinker"
 
     var provider: ModelProvider {
         switch self {
@@ -108,6 +113,8 @@ enum ModelSelection: String, CaseIterable {
             return .anthropic
         case .fireworksKimiK26, .fireworksGLM52:
             return .fireworks
+        case .tinker:
+            return .thinky
         }
     }
 
@@ -124,6 +131,7 @@ enum ModelSelection: String, CaseIterable {
         case .claudeHaiku45:   return "Claude Haiku 4.5"
         case .fireworksKimiK26: return "Kimi K2.6"
         case .fireworksGLM52:  return "GLM 5.2"
+        case .tinker:          return "Thinking Machines"
         }
     }
 
@@ -143,6 +151,7 @@ enum ModelSelection: String, CaseIterable {
         case .claudeHaiku45:   return "claude-haiku-4-5-20251001"
         case .fireworksKimiK26: return "accounts/fireworks/models/kimi-k2p6"
         case .fireworksGLM52:  return "accounts/fireworks/models/glm-5p2"
+        case .tinker:           return KeyStore.shared.value(for: .thinkyModelPath)
         }
     }
 
@@ -156,7 +165,7 @@ enum ModelSelection: String, CaseIterable {
     }
 
     /// Total context window size in tokens, or `nil` when the limit is
-    /// unknown (Apple on-device model). Used to compute the "Context X%"
+    /// unknown (Apple on-device or Tinker checkpoint). Used to compute the "Context X%"
     /// byline chip after each assistant response.
     var contextWindowSize: Int? {
         switch self {
@@ -170,6 +179,7 @@ enum ModelSelection: String, CaseIterable {
         case .claudeHaiku45:    return 200_000
         case .fireworksKimiK26: return 131_072
         case .fireworksGLM52:  return 1_048_576
+        case .tinker:           return nil
         }
     }
 
@@ -195,6 +205,7 @@ enum ModelSelection: String, CaseIterable {
         case .openAI:    return .openAI
         case .anthropic: return .anthropic
         case .fireworks: return .fireworks
+        case .thinky:    return .thinky
         }
     }
 
@@ -215,6 +226,8 @@ enum ModelSelection: String, CaseIterable {
             return true
         case .fireworksGLM52:
             // GLM 5.2 on Fireworks is text-only — image turns fall back to Kimi.
+            return false
+        case .tinker:
             return false
         }
     }

@@ -115,7 +115,7 @@ final class VisionSummaryService {
         case .fireworks:
             FireworksChat.shared.chat(messages: [probe], tools: nil,
                                       modelIDOverride: target.modelID, completion: handle)
-        case .apple:
+        case .apple, .thinky:
             // visionTarget() only ever returns hosted providers; keep the
             // switch exhaustive.
             finishWithOCRFallback(attachment, conversationId: conversationId)

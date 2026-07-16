@@ -492,6 +492,8 @@ Tips:
         case .openAI:                 return "openai"
         case .anthropic:              return "anthropic"
         case .fireworks:              return "fireworks"
+        case .thinky:                 return "thinky"
+        case .thinkyModelPath:        return "thinky_model_path"
         case .cursor:                 return "cursor"
         case .obsidianAPI:            return "obsidian_api"
         case .obsidianBaseURL:        return "obsidian_base_url"

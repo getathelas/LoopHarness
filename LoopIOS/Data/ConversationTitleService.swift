@@ -205,6 +205,12 @@ final class ConversationTitleService {
                 return .fireworks(key: key)
             }
             return nil
+        case .thinky:
+            if let key = KeyStore.shared.value(for: .thinky), !key.isEmpty,
+               let modelPath = KeyStore.shared.value(for: .thinkyModelPath), !modelPath.isEmpty {
+                return .thinky(key: key, modelPath: modelPath)
+            }
+            return nil
         }
     }
 
@@ -307,6 +313,7 @@ private enum TitleProvider {
     case anthropic(key: String)
     case openAI(key: String)
     case fireworks(key: String)
+    case thinky(key: String, modelPath: String)
     /// On-device via FoundationModels. No key, no network — slower than the
     /// cheap-cloud models but always works if Apple Intelligence is enabled.
     case apple
@@ -321,6 +328,8 @@ private enum TitleProvider {
             Self.sendOpenAI(key: key, snippet: snippet, session: session, completion: completion)
         case .fireworks(let key):
             Self.sendFireworks(key: key, snippet: snippet, session: session, completion: completion)
+        case .thinky(let key, let modelPath):
+            Self.sendTinker(key: key, modelPath: modelPath, snippet: snippet, session: session, completion: completion)
         case .apple:
             Self.sendApple(snippet: snippet, completion: completion)
         }
@@ -456,6 +465,52 @@ Title this conversation in 3-5 words:
             if let http = response as? HTTPURLResponse, http.statusCode >= 400 {
                 let bodyStr = data.flatMap { String(data: $0, encoding: .utf8) } ?? "<no body>"
                 print("TitleService fireworks HTTP \(http.statusCode): \(bodyStr)")
+                completion(nil); return
+            }
+            guard let data = data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let choices = json["choices"] as? [[String: Any]],
+                  let message = choices.first?["message"] as? [String: Any],
+                  let text = message["content"] as? String else {
+                completion(nil); return
+            }
+            completion(text)
+        }
+        task.resume()
+    }
+
+    // MARK: Tinker (Thinking Machines)
+
+    private static func sendTinker(key: String,
+                                   modelPath: String,
+                                   snippet: String,
+                                   session: URLSession,
+                                   completion: @escaping (String?) -> Void) {
+        guard let url = URL(string: "https://tinker.thinkingmachines.dev/services/tinker-prod/oai/api/v1/chat/completions") else {
+            completion(nil); return
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = [
+            "model": modelPath,
+            "max_tokens": 32,
+            "temperature": 0.4,
+            "messages": [
+                ["role": "system", "content": systemPrompt],
+                ["role": "user", "content": userInstruction + snippet],
+            ],
+        ]
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        let task = session.dataTask(with: req) { data, response, error in
+            if let error = error {
+                print("TitleService tinker error: \(error.localizedDescription)")
+                completion(nil); return
+            }
+            if let http = response as? HTTPURLResponse, http.statusCode >= 400 {
+                let bodyStr = data.flatMap { String(data: $0, encoding: .utf8) } ?? "<no body>"
+                print("TitleService tinker HTTP \(http.statusCode): \(bodyStr)")
                 completion(nil); return
             }
             guard let data = data,
