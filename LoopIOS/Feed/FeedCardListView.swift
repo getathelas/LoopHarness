@@ -198,13 +198,28 @@ private final class FeedCardCell: UITableViewCell {
 
     static let reuseID = "FeedCardCell"
 
+    /// Panel surface: near-black in dark mode, an elevated light surface in
+    /// light mode. Resolves against the current trait collection.
+    static let panelBackground = UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 1)
+            : .secondarySystemBackground
+    }
+
+    /// Hairline border: light-on-dark in dark mode, dark-on-light in light mode.
+    static let panelBorder = UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(white: 1, alpha: 0.06)
+            : UIColor(white: 0, alpha: 0.08)
+    }
+
     private let panel: UIView = {
         let v = UIView()
-        v.backgroundColor = UIColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 1)
+        v.backgroundColor = FeedCardCell.panelBackground
         v.layer.cornerRadius = 20
         v.layer.cornerCurve = .continuous
         v.layer.borderWidth = 1
-        v.layer.borderColor = UIColor(white: 1, alpha: 0.06).cgColor
+        v.layer.borderColor = FeedCardCell.panelBorder.cgColor
         return v
     }()
 
@@ -225,7 +240,7 @@ private final class FeedCardCell: UITableViewCell {
     private let titleLabel: UILabel = {
         let l = UILabel()
         l.font = .systemFont(ofSize: 20, weight: .bold)
-        l.textColor = .white
+        l.textColor = .label
         l.numberOfLines = 2
         return l
     }()
@@ -268,6 +283,15 @@ private final class FeedCardCell: UITableViewCell {
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+        super.traitCollectionDidChange(previous)
+        // CGColor doesn't track trait changes, so re-resolve the border when the
+        // interface style flips between light and dark.
+        if traitCollection.hasDifferentColorAppearance(comparedTo: previous) {
+            panel.layer.borderColor = FeedCardCell.panelBorder.resolvedColor(with: traitCollection).cgColor
+        }
+    }
 
     private func setupLayout() {
         panel.translatesAutoresizingMaskIntoConstraints = false
