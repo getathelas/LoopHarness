@@ -95,6 +95,7 @@ enum ModelSelection: String, CaseIterable {
     case claudeHaiku45  = "claudeHaiku45"
 
     // Fireworks — models served via Fireworks inference.
+    case fireworksKimiK3  = "fireworksKimiK3"
     case fireworksKimiK26 = "fireworksKimiK26"
     case fireworksGLM52  = "fireworksGLM52"
 
@@ -106,7 +107,7 @@ enum ModelSelection: String, CaseIterable {
             return .openAI
         case .claudeOpus47, .claudeSonnet46, .claudeHaiku45:
             return .anthropic
-        case .fireworksKimiK26, .fireworksGLM52:
+        case .fireworksKimiK3, .fireworksKimiK26, .fireworksGLM52:
             return .fireworks
         }
     }
@@ -122,6 +123,7 @@ enum ModelSelection: String, CaseIterable {
         case .claudeOpus47:    return "Claude Opus 4.7"
         case .claudeSonnet46:  return "Claude Sonnet 4.6"
         case .claudeHaiku45:   return "Claude Haiku 4.5"
+        case .fireworksKimiK3:  return "Kimi K3"
         case .fireworksKimiK26: return "Kimi K2.6"
         case .fireworksGLM52:  return "GLM 5.2"
         }
@@ -141,6 +143,7 @@ enum ModelSelection: String, CaseIterable {
         case .claudeOpus47:    return "claude-opus-4-7"
         case .claudeSonnet46:  return "claude-sonnet-4-6"
         case .claudeHaiku45:   return "claude-haiku-4-5-20251001"
+        case .fireworksKimiK3:  return "accounts/fireworks/models/kimi-k3"
         case .fireworksKimiK26: return "accounts/fireworks/models/kimi-k2p6"
         case .fireworksGLM52:  return "accounts/fireworks/models/glm-5p2"
         }
@@ -168,6 +171,7 @@ enum ModelSelection: String, CaseIterable {
         case .claudeOpus47:     return 200_000
         case .claudeSonnet46:   return 200_000
         case .claudeHaiku45:    return 200_000
+        case .fireworksKimiK3:  return 1_048_576
         case .fireworksKimiK26: return 131_072
         case .fireworksGLM52:  return 1_048_576
         }
@@ -211,7 +215,7 @@ enum ModelSelection: String, CaseIterable {
             return true
         case .claudeOpus47, .claudeSonnet46, .claudeHaiku45:
             return true
-        case .fireworksKimiK26:
+        case .fireworksKimiK3, .fireworksKimiK26:
             return true
         case .fireworksGLM52:
             // GLM 5.2 on Fireworks is text-only — image turns fall back to Kimi.
