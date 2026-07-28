@@ -2,7 +2,7 @@
 //  HotkeyVisualView.swift
 //  LoopMac
 //
-//  Animated illustration of the fn + ⌃ hold-to-talk hotkey shown during
+//  Animated illustration of the shift + ⌃ hold-to-talk hotkey shown during
 //  onboarding's first-command step. Two key caps press down in sequence,
 //  hold, then release — looping so the user can imitate it.
 //
@@ -12,11 +12,7 @@ import QuartzCore
 
 final class HotkeyVisualView: NSView {
 
-    /// Faded "shift" cap above and left-aligned to fn. Never pressed —
-    /// it's a static orientation cue ("you're in the bottom-left corner of
-    /// the keyboard"), not part of the chord.
-    private let shiftKey = KeyCapView(glyph: "shift", labelPosition: .bottomLeading)
-    private let fnKey = KeyCapView(glyph: "fn")
+    private let shiftKey = KeyCapView(glyph: "shift")
     private let ctrlKey = KeyCapView(glyph: "⌃")
     private let plusLabel = NSTextField(labelWithString: "+")
     private var cycleTimer: Timer?
@@ -26,10 +22,10 @@ final class HotkeyVisualView: NSView {
     /// is true the corresponding cap is pinned in the pressed state and the
     /// animation cycle skips over it — releasing returns control to the
     /// animation.
-    private var realFnHeld = false {
+    private var realShiftHeld = false {
         didSet {
-            guard oldValue != realFnHeld else { return }
-            fnKey.setPressed(realFnHeld)
+            guard oldValue != realShiftHeld else { return }
+            shiftKey.setPressed(realShiftHeld)
         }
     }
     private var realCtrlHeld = false {
@@ -49,32 +45,18 @@ final class HotkeyVisualView: NSView {
         plusLabel.textColor = .tertiaryLabelColor
         plusLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        let pressedRow = NSStackView(views: [fnKey, plusLabel, ctrlKey])
+        let pressedRow = NSStackView(views: [shiftKey, plusLabel, ctrlKey])
         pressedRow.orientation = .horizontal
         pressedRow.alignment = .centerY
         pressedRow.spacing = 14
         pressedRow.translatesAutoresizingMaskIntoConstraints = false
         addSubview(pressedRow)
 
-        shiftKey.translatesAutoresizingMaskIntoConstraints = false
-        // Faded so it reads as "context, not the keys to press".
-        shiftKey.alphaValue = 0.35
-        addSubview(shiftKey)
-
         NSLayoutConstraint.activate([
             // Pressed row sits along the bottom of our bounds and is
             // horizontally centered.
             pressedRow.centerXAnchor.constraint(equalTo: centerXAnchor),
-            pressedRow.bottomAnchor.constraint(equalTo: bottomAnchor),
-
-            // shift sits a row up and spans from fn's leading edge to ctrl's
-            // trailing edge — mimics the wide shift key on a real Mac
-            // keyboard. Required constraints override the cap's intrinsic
-            // width (56pt) so it stretches.
-            shiftKey.leadingAnchor.constraint(equalTo: fnKey.leadingAnchor),
-            shiftKey.trailingAnchor.constraint(equalTo: ctrlKey.trailingAnchor),
-            shiftKey.bottomAnchor.constraint(equalTo: fnKey.topAnchor, constant: -8),
-            shiftKey.topAnchor.constraint(greaterThanOrEqualTo: topAnchor),
+            pressedRow.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
     }
 
@@ -101,7 +83,7 @@ final class HotkeyVisualView: NSView {
     private func startAnimating() {
         stopAnimating()
         runCycle()
-        // 3.6s per cycle: 0.4 idle, fn down at 0.4, ctrl down at 0.75, hold,
+        // 3.6s per cycle: 0.4 idle, shift down at 0.4, ctrl down at 0.75, hold,
         // both release at 2.6, brief idle, loop.
         cycleTimer = Timer.scheduledTimer(withTimeInterval: 3.6, repeats: true) { [weak self] _ in
             self?.runCycle()
@@ -116,21 +98,21 @@ final class HotkeyVisualView: NSView {
         // Only reset caps that aren't currently being held for real. Otherwise
         // the next viewDidMoveToWindow could blip them out of the pressed
         // state while the user's finger is still on the key.
-        if !realFnHeld { fnKey.setPressed(false, animated: false) }
+        if !realShiftHeld { shiftKey.setPressed(false, animated: false) }
         if !realCtrlHeld { ctrlKey.setPressed(false, animated: false) }
     }
 
     private func runCycle() {
         schedule(after: 0.40) {
-            guard !self.realFnHeld else { return }
-            self.fnKey.setPressed(true)
+            guard !self.realShiftHeld else { return }
+            self.shiftKey.setPressed(true)
         }
         schedule(after: 0.75) {
             guard !self.realCtrlHeld else { return }
             self.ctrlKey.setPressed(true)
         }
         schedule(after: 2.60) {
-            if !self.realFnHeld { self.fnKey.setPressed(false) }
+            if !self.realShiftHeld { self.shiftKey.setPressed(false) }
             if !self.realCtrlHeld { self.ctrlKey.setPressed(false) }
         }
     }
@@ -167,7 +149,7 @@ final class HotkeyVisualView: NSView {
     }
 
     private func applyFlags(_ flags: NSEvent.ModifierFlags) {
-        realFnHeld = flags.contains(.function)
+        realShiftHeld = flags.contains(.shift)
         realCtrlHeld = flags.contains(.control)
     }
 }
@@ -175,18 +157,7 @@ final class HotkeyVisualView: NSView {
 /// Single key cap. The cap layer sits raised above a darker base; on press
 /// it slides down to flush with the base, mimicking a keyboard keycap being
 /// held down. The text glyph lives inside the cap so it tracks the motion.
-///
-/// Layout is bounds-driven (not constant-driven), so a caller can stretch
-/// a cap with autolayout — used to make the shift cap span the row.
 private final class KeyCapView: NSView {
-
-    enum LabelPosition {
-        /// Glyph centered inside the cap (default for fn / ⌃).
-        case center
-        /// Glyph nudged into the bottom-left corner, like the "shift" label
-        /// on a real Mac shift key. Used for the orientation cue.
-        case bottomLeading
-    }
 
     private let intrinsicWidth: CGFloat = 56
     private let intrinsicHeight: CGFloat = 56
@@ -196,10 +167,8 @@ private final class KeyCapView: NSView {
     private let capLayer = CALayer()
     private let textLayer = CATextLayer()
     private var pressed = false
-    private let labelPosition: LabelPosition
 
-    init(glyph: String, labelPosition: LabelPosition = .center) {
-        self.labelPosition = labelPosition
+    init(glyph: String) {
         super.init(frame: NSRect(x: 0, y: 0, width: 56, height: 56))
         wantsLayer = true
         layer?.masksToBounds = false
@@ -214,7 +183,7 @@ private final class KeyCapView: NSView {
         textLayer.string = glyph
         textLayer.font = NSFont.systemFont(ofSize: 18, weight: .medium)
         textLayer.fontSize = 18
-        textLayer.alignmentMode = labelPosition == .center ? .center : .left
+        textLayer.alignmentMode = .center
         textLayer.truncationMode = .none
         textLayer.contentsScale = NSScreen.main?.backingScaleFactor ?? 2.0
         capLayer.addSublayer(textLayer)
@@ -233,33 +202,19 @@ private final class KeyCapView: NSView {
         let capH = max(0, bounds.height - liftAmount)
         let capW = bounds.width
 
-        // Layout runs whenever bounds change (e.g. shift stretched across the
-        // row). Disable implicit animations so the resize is instantaneous;
-        // press animations have their own transaction in setPressed.
+        // Disable implicit animations so layout is instantaneous; press
+        // animations have their own transaction in setPressed.
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         baseLayer.frame = CGRect(x: 0, y: 0, width: capW, height: capH)
         capLayer.frame = CGRect(x: 0, y: pressed ? 0 : liftAmount, width: capW, height: capH)
         let textHeight: CGFloat = 22
-        switch labelPosition {
-        case .center:
-            textLayer.frame = CGRect(
-                x: 0,
-                y: (capH - textHeight) / 2,
-                width: capW,
-                height: textHeight
-            )
-        case .bottomLeading:
-            // Pin to the lower-left corner with a small inset — mirrors how
-            // "shift" is etched at the bottom-left of a real Apple keycap.
-            let inset: CGFloat = 8
-            textLayer.frame = CGRect(
-                x: inset,
-                y: inset - 2, // small visual nudge so it sits tight to bottom
-                width: capW - inset * 2,
-                height: textHeight
-            )
-        }
+        textLayer.frame = CGRect(
+            x: 0,
+            y: (capH - textHeight) / 2,
+            width: capW,
+            height: textHeight
+        )
         CATransaction.commit()
     }
 

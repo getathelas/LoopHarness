@@ -3,7 +3,7 @@
 //  LoopMac
 //
 //  Slim floating bar pinned bottom-center of the active screen, matching
-//  LoopIOS/Specs/mac_recorder.png. Always visible; the user holds control+fn
+//  LoopIOS/Specs/mac_recorder.png. Always visible; the user holds shift+control
 //  from anywhere to record.
 //
 
@@ -381,7 +381,7 @@ final class RecorderWindowController: NSWindowController, NSTextFieldDelegate, N
     }
 
     private func makePlaceholder() -> NSAttributedString {
-        // "Type or hold fn control to speak" with the keys shown as small
+        // "Type or hold shift control to speak" with the keys shown as small
         // pill-buttons. We use attachments + paragraph styling to mirror the
         // mockup as closely as possible.
         let result = NSMutableAttributedString()
@@ -393,7 +393,7 @@ final class RecorderWindowController: NSWindowController, NSTextFieldDelegate, N
             .font: NSFont.systemFont(ofSize: 15),
         ]
         result.append(NSAttributedString(string: "Type or hold ", attributes: baseAttrs))
-        result.append(keyPill("fn"))
+        result.append(keyPill("shift"))
         result.append(NSAttributedString(string: " ", attributes: baseAttrs))
         result.append(keyPill("control"))
         result.append(NSAttributedString(string: " to speak", attributes: baseAttrs))

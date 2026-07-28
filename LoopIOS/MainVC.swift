@@ -34,6 +34,11 @@ class MainVC: MessagingVC {
     /// rather than reloading on every layout pass.
     private var feedStackLoaded = false
 
+    /// CardStore reads its JSON files from the iCloud workspace. On a new
+    /// phone those files may be evicted placeholders, so its first load must
+    /// never happen from `viewDidLoad` / `viewDidLayoutSubviews` on main.
+    private var feedStackLoading = false
+
     /// The immersive agent view when it is hosted as a child view
     /// controller (instead of a fullscreen modal). Kept alive so dismiss
     /// can tear it down cleanly.
@@ -443,9 +448,20 @@ class MainVC: MessagingVC {
         // chat. Reset the flag when the chat fills so the next new chat deals a
         // fresh deck — and so we never reload mid-swipe on a layout pass.
         if chatEmpty {
-            if !feedStackLoaded {
-                feedCardList?.setCards(CardStore.shared.feedCards)
-                feedStackLoaded = true
+            if !feedStackLoaded && !feedStackLoading {
+                feedStackLoading = true
+                DispatchQueue.global(qos: .utility).async { [weak self] in
+                    let cards = CardStore.shared.feedCards
+                    DispatchQueue.main.async {
+                        guard let self = self else { return }
+                        self.feedCardList?.setCards(cards)
+                        self.feedStackLoading = false
+                        self.feedStackLoaded = true
+                        // Loading cards may switch the empty state from the
+                        // hero orb to the feed list; recompute once data lands.
+                        self.refreshAvatarVisibility(animated: false)
+                    }
+                }
             }
         } else {
             feedStackLoaded = false
