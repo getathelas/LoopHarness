@@ -120,6 +120,10 @@ final class ModelPickerVC: UIViewController {
             return keyConfigured(.fireworks)
                 ? "Uses your Fireworks API key."
                 : "Needs a Fireworks API key. Add one in Settings ▸ Keys."
+        case .thinky:
+            return keyConfigured(.thinky)
+                ? "Uses your Thinking Machines API key."
+                : "Needs a Thinking Machines API key (THINKY_API_KEY) and model path. Add them in Settings ▸ Keys."
         }
     }
 }

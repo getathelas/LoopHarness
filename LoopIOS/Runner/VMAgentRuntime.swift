@@ -41,6 +41,10 @@ enum VMAgentRuntime {
         case .anthropic: if let k = key(.anthropic), let m = sel.apiModelID { return ("anthropic", m, k, sel.displayName) }
         case .openAI:    if let k = key(.openAI),    let m = sel.apiModelID { return ("openai", m, k, sel.displayName) }
         case .fireworks: if let k = key(.fireworks), let m = sel.apiModelID { return ("fireworks", m, k, sel.displayName) }
+        case .thinky:
+            // The Loop VM runner does not support Tinker's custom base URL;
+            // fall through to the other configured-provider fallbacks below.
+            break
         case .apple: break
         }
         if let k = key(.openAI)    { return ("openai", "gpt-4o", k, "GPT-4o") }

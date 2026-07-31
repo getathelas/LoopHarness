@@ -47,9 +47,11 @@ final class ModelSelectionContextWindowTests: XCTestCase {
     func testKnownModelsHaveWindowSizes() {
         for model in ModelSelection.allCases {
             switch model {
-            case .appleFoundation:
+            case .appleFoundation, .tinker:
+                // Apple runs on-device and Tinker serves user-supplied
+                // checkpoints, so neither has a known context window.
                 XCTAssertNil(model.contextWindowSize,
-                             "Apple Foundation should have nil context window")
+                             "\(model.displayName) should have nil context window")
             default:
                 XCTAssertNotNil(model.contextWindowSize,
                                 "\(model.displayName) should have a context window size")
