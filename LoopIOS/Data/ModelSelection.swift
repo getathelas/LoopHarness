@@ -99,6 +99,7 @@ enum ModelSelection: String, CaseIterable {
     case claudeHaiku45  = "claudeHaiku45"
 
     // Amazon Bedrock Mantle — Claude via the user's Bedrock API key.
+    case bedrockOpus5  = "bedrockOpus5"
     case bedrockOpus48 = "bedrockOpus48"
     case bedrockOpus47 = "bedrockOpus47"
 
@@ -115,7 +116,7 @@ enum ModelSelection: String, CaseIterable {
             return .openAI
         case .claudeOpus47, .claudeSonnet46, .claudeHaiku45:
             return .anthropic
-        case .bedrockOpus48, .bedrockOpus47:
+        case .bedrockOpus5, .bedrockOpus48, .bedrockOpus47:
             return .bedrock
         case .fireworksKimiK3, .fireworksKimiK26, .fireworksGLM52:
             return .fireworks
@@ -133,6 +134,7 @@ enum ModelSelection: String, CaseIterable {
         case .claudeOpus47:    return "Claude Opus 4.7"
         case .claudeSonnet46:  return "Claude Sonnet 4.6"
         case .claudeHaiku45:   return "Claude Haiku 4.5"
+        case .bedrockOpus5:    return "Claude Opus 5"
         case .bedrockOpus48:   return "Claude Opus 4.8"
         case .bedrockOpus47:   return "Claude Opus 4.7"
         case .fireworksKimiK3:  return "Kimi K3"
@@ -155,6 +157,7 @@ enum ModelSelection: String, CaseIterable {
         case .claudeOpus47:    return "claude-opus-4-7"
         case .claudeSonnet46:  return "claude-sonnet-4-6"
         case .claudeHaiku45:   return "claude-haiku-4-5-20251001"
+        case .bedrockOpus5:    return "anthropic.claude-opus-5"
         case .bedrockOpus48:   return "anthropic.claude-opus-4-8"
         case .bedrockOpus47:   return "anthropic.claude-opus-4-7"
         case .fireworksKimiK3:  return "accounts/fireworks/models/kimi-k3-fast"
@@ -186,6 +189,7 @@ enum ModelSelection: String, CaseIterable {
         case .claudeOpus47:     return 200_000
         case .claudeSonnet46:   return 200_000
         case .claudeHaiku45:    return 200_000
+        case .bedrockOpus5:     return 1_048_576
         case .bedrockOpus48:    return 1_048_576
         case .bedrockOpus47:    return 1_048_576
         case .fireworksKimiK3:  return 1_048_576
@@ -233,7 +237,7 @@ enum ModelSelection: String, CaseIterable {
             return true
         case .claudeOpus47, .claudeSonnet46, .claudeHaiku45:
             return true
-        case .bedrockOpus48, .bedrockOpus47:
+        case .bedrockOpus5, .bedrockOpus48, .bedrockOpus47:
             return true
         case .fireworksKimiK3, .fireworksKimiK26:
             return true

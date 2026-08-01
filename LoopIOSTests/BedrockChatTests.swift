@@ -52,6 +52,7 @@ final class BedrockChatTests: XCTestCase {
 
     func testOpusModelsUseBedrockKeyAndOfficialModelIDs() {
         let expected: [(ModelSelection, String)] = [
+            (.bedrockOpus5, "anthropic.claude-opus-5"),
             (.bedrockOpus48, "anthropic.claude-opus-4-8"),
             (.bedrockOpus47, "anthropic.claude-opus-4-7"),
         ]

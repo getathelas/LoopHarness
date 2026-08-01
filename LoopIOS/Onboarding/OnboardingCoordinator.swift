@@ -917,7 +917,7 @@ final class OnboardingCoordinator {
         let selection: ModelSelection?
         switch key {
         case .anthropic: selection = .claudeSonnet46
-        case .bedrock:   selection = .bedrockOpus48
+        case .bedrock:   selection = .bedrockOpus5
         case .openAI:    selection = .gpt55
         case .fireworks: selection = .fireworksKimiK26
         default:         selection = nil

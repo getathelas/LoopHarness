@@ -59,7 +59,7 @@ final class BedrockChat {
 
         let modelID = modelIDOverride
             ?? ModelSelectionStore.current.apiModelID
-            ?? "anthropic.claude-opus-4-8"
+            ?? "anthropic.claude-opus-5"
         let body = Self.requestBody(messages: messages, tools: tools, modelID: modelID,
                                     maxTokens: maxTokens)
         guard let payload = try? JSONSerialization.data(withJSONObject: body) else {
