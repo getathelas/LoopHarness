@@ -2,7 +2,7 @@
 //  HotKeyMonitor.swift
 //  LoopMac
 //
-//  Listens for the control + fn modifier combo across the whole system. We
+//  Listens for the shift + control modifier combo across the whole system. We
 //  use NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) so the user
 //  can trigger Loop from any app, not just when Loop is frontmost.
 //
@@ -28,7 +28,7 @@ final class HotKeyMonitor {
     private var combinationActive = false
     private var holdTimer: Timer?
     private var holdFired = false
-    /// How long the user must hold ctrl+fn before we treat the press as a
+    /// How long the user must hold shift+control before we treat the press as a
     /// "hold to record" rather than a "tap to type." 200ms is short enough
     /// that recording still feels immediate but long enough that a quick
     /// chord doesn't accidentally start the mic.
@@ -56,9 +56,9 @@ final class HotKeyMonitor {
 
     private func handle(event: NSEvent) {
         let flags = event.modifierFlags
-        // We want the press where BOTH control and function are held; release
+        // We want the press where BOTH shift and control are held; release
         // on either coming up.
-        let comboHeld = flags.contains(.control) && flags.contains(.function)
+        let comboHeld = flags.contains(.shift) && flags.contains(.control)
         if comboHeld && !combinationActive {
             combinationActive = true
             holdFired = false

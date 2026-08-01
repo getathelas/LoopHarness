@@ -154,7 +154,7 @@ final class OrbAvatar {
         root.components.set(BillboardComponent())
 
         // Pinch target: the user pinches while looking at the ball (the Vision
-        // equivalent of holding fn+control). A generous collision sphere makes
+        // equivalent of holding shift+control). A generous collision sphere makes
         // it forgiving to aim at even as the ball breathes.
         let reachM = Float(latticeReach) * metersPerGridUnit
         root.components.set(InputTargetComponent())

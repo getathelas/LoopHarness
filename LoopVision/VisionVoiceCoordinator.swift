@@ -9,7 +9,7 @@
 //  KeyStore, MessageStruct) are the same LoopIOS/ sources LoopMac compiles.
 //
 //  The pinch gesture is wired to be the exact equivalent of holding
-//  fn+control on the Mac (see LoopMac/HotKeyMonitor): `pinchBegan()` starts
+//  shift+control on the Mac (see LoopMac/HotKeyMonitor): `pinchBegan()` starts
 //  capture, `pinchEnded()` stops it and sends the turn.
 //
 //  Concurrency intentionally mirrors the Mac coordinator: a plain class
@@ -121,7 +121,7 @@ final class VisionVoiceCoordinator {
         loadConversation()
     }
 
-    // MARK: - Pinch gesture entry points (the fn+control equivalent)
+    // MARK: - Pinch gesture entry points (the shift+control equivalent)
 
     /// Called on pinch-down. Idempotent: a held pinch fires the gesture's
     /// `onChanged` repeatedly, but only the first one (while idle/speaking)

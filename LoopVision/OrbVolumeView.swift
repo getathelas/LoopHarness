@@ -12,7 +12,7 @@ import RealityKit
 /// `InputTargetComponent` + `CollisionComponent`, and the pinch gesture below
 /// is `.targetedToEntity(orb.root)`. visionOS only routes the pinch to the orb
 /// while the wearer's gaze is on that collision shape — so a glance plus a
-/// pinch-and-hold is the exact analogue of holding fn+control on the Mac:
+/// pinch-and-hold is the exact analogue of holding shift+control on the Mac:
 /// record while held, send the turn on release.
 ///
 /// All conversation state comes from the shared `VisionSession`; this view
@@ -97,7 +97,7 @@ struct OrbVolumeView: View {
 
     private static let captionID = "caption"
 
-    // MARK: - Pinch-hold gesture (the fn+control equivalent)
+    // MARK: - Pinch-hold gesture (the shift+control equivalent)
 
     /// A zero-distance drag targeted at the orb behaves as press-and-hold:
     /// the first `onChanged` is the pinch-down, `onEnded` is the release.

@@ -791,7 +791,7 @@
 				INFOPLIST_FILE = LoopMac/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Loop;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Loop records your voice when you hold control + fn so it can transcribe and send it to the assistant.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Loop records your voice when you hold shift + control so it can transcribe and send it to the assistant.";
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Loop transcribes your speech so the assistant can hear what you say.";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -848,7 +848,7 @@
 				INFOPLIST_FILE = LoopMac/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Loop;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Loop records your voice when you hold control + fn so it can transcribe and send it to the assistant.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Loop records your voice when you hold shift + control so it can transcribe and send it to the assistant.";
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Loop transcribes your speech so the assistant can hear what you say.";
 				LD_RUNPATH_SEARCH_PATHS = (

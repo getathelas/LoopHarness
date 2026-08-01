@@ -470,7 +470,12 @@ When the user asks how you work, what you can do, or how you're built, read `ABO
 
         // Hand the harness a reference back to us so /new, /reset, and /compact
         // can apply UI-level side effects without the harness depending on UIKit.
-        AgentHarness.shared.slashCommandHost = self
+        let agentHarness = AgentHarness.shared
+        agentHarness.slashCommandHost = self
+        // Workspace documents and skills may still be iCloud placeholders on
+        // a new phone. Hydrate them in the background while the basic chat UI
+        // below is constructed immediately.
+        agentHarness.startPersistenceBootstrap()
         // ImageGenerationService injects placeholder + final image messages
         // into the chat as the long-running HTTP request progresses; route
         // those through us so the bubble updates in place.
