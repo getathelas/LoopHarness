@@ -164,7 +164,7 @@ final class AnthropicChat {
     /// Skills declare tools in OpenAI's `{"type":"function","function":{name,
     /// description, parameters}}` shape. Anthropic wants flat
     /// `{name, description, input_schema}`.
-    private static func anthropicTools(from tools: [[String: Any]]) -> [[String: Any]] {
+    static func anthropicTools(from tools: [[String: Any]]) -> [[String: Any]] {
         var seen = Set<String>()
         var out: [[String: Any]] = []
         for tool in tools {
@@ -194,7 +194,7 @@ final class AnthropicChat {
     /// `callId` so multi-call sequences round-trip correctly. Legacy messages
     /// without a `callId` fall back to plain prose so older persisted chats
     /// keep working.
-    private static func wirePayload(from messages: [MessageStruct]) -> (String?, [[String: Any]]) {
+    static func wirePayload(from messages: [MessageStruct]) -> (String?, [[String: Any]]) {
         var systemParts: [String] = []
         // Intermediate: (role, content blocks). Always block arrays so a text
         // turn and an image turn can be merged uniformly when coalescing.

@@ -546,6 +546,8 @@ final class AgentHarness {
         switch routeProvider {
         case .anthropic:
             AnthropicChat.shared.chat(messages: rebuilt, tools: toolsToSend, modelIDOverride: modelIDOverride, modelStampOverride: modelStampOverride, onPartial: onPartial, completion: completion)
+        case .bedrock:
+            BedrockChat.shared.chat(messages: rebuilt, tools: toolsToSend, modelIDOverride: modelIDOverride, modelStampOverride: modelStampOverride, onPartial: onPartial, completion: completion)
         case .openAI:
             OpenAIChat.shared.chat(messages: rebuilt, tools: toolsToSend, modelIDOverride: modelIDOverride, modelStampOverride: modelStampOverride, onPartial: onPartial, completion: completion)
         case .fireworks:

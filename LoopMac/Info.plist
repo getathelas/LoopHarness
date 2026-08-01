@@ -53,6 +53,10 @@
 	<string>$(OPENAI_API_KEY)</string>
 	<key>ANTHROPIC_API_KEY</key>
 	<string>$(ANTHROPIC_API_KEY)</string>
+	<key>AWS_BEARER_TOKEN_BEDROCK</key>
+	<string>$(AWS_BEARER_TOKEN_BEDROCK)</string>
+	<key>BEDROCK_AWS_REGION</key>
+	<string>$(BEDROCK_AWS_REGION)</string>
 	<key>FIREWORKS_API_KEY</key>
 	<string>$(FIREWORKS_API_KEY)</string>
 	<key>OBSIDIAN_API_KEY</key>

@@ -22,6 +22,7 @@ final class AnthropicStreamReader: NSObject, URLSessionDataDelegate {
 
     private let completion: (Swift.Result<Result, Error>) -> Void
     private var metrics: InferenceMetrics
+    private let serviceName: String
     /// Fired on the URLSession delegate queue with each text delta as it
     /// arrives. Held strongly — see `SSEStreamReader.onDelta`.
     private let onDelta: ((String) -> Void)?
@@ -50,9 +51,11 @@ final class AnthropicStreamReader: NSObject, URLSessionDataDelegate {
     private var receivedFirstChunk = false
 
     init(metrics: InferenceMetrics,
+         serviceName: String = "Anthropic",
          onDelta: ((String) -> Void)? = nil,
          completion: @escaping (Swift.Result<Result, Error>) -> Void) {
         self.metrics = metrics
+        self.serviceName = serviceName
         self.onDelta = onDelta
         self.completion = completion
     }
@@ -68,7 +71,7 @@ final class AnthropicStreamReader: NSObject, URLSessionDataDelegate {
             completion(.failure(NSError(
                 domain: "AnthropicStreamReader",
                 code: http.statusCode,
-                userInfo: [NSLocalizedDescriptionKey: "HTTP \(http.statusCode) from Anthropic"])))
+                userInfo: [NSLocalizedDescriptionKey: "HTTP \(http.statusCode) from \(serviceName)"])))
             return
         }
         completionHandler(.allow)
