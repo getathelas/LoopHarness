@@ -911,6 +911,9 @@ The current date and time is \(now).
         if CursorSkill.shared.handles(functionName: function.name) {
             CursorSkill.shared.handle(functionCall: function, completion: cont); return
         }
+        if CodexSkill.shared.handles(functionName: function.name) {
+            CodexSkill.shared.handle(functionCall: function, completion: cont); return
+        }
         if TwitterSkill.shared.handles(functionName: function.name) {
             TwitterSkill.shared.handle(functionCall: function, completion: cont); return
         }
@@ -966,6 +969,7 @@ The current date and time is \(now).
         if let s = SubAgentSkill.shared.statusText(for: call) { return s }
         if let s = DevinSkill.shared.statusText(for: call) { return s }
         if let s = CursorSkill.shared.statusText(for: call) { return s }
+        if let s = CodexSkill.shared.statusText(for: call) { return s }
         if let s = GoogleDriveSkill.shared.statusText(for: call) { return s }
         if let s = GoogleGmailSkill.shared.statusText(for: call) { return s }
         if let s = GoogleCalendarSkill.shared.statusText(for: call) { return s }
