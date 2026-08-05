@@ -98,6 +98,7 @@ enum ModelSelection: String, CaseIterable {
     case fireworksKimiK3  = "fireworksKimiK3"
     case fireworksKimiK26 = "fireworksKimiK26"
     case fireworksGLM52  = "fireworksGLM52"
+    case fireworksDeepSeekV4Flash0731 = "fireworksDeepSeekV4Flash0731"
 
     var provider: ModelProvider {
         switch self {
@@ -107,7 +108,8 @@ enum ModelSelection: String, CaseIterable {
             return .openAI
         case .claudeOpus47, .claudeSonnet46, .claudeHaiku45:
             return .anthropic
-        case .fireworksKimiK3, .fireworksKimiK26, .fireworksGLM52:
+        case .fireworksKimiK3, .fireworksKimiK26, .fireworksGLM52,
+             .fireworksDeepSeekV4Flash0731:
             return .fireworks
         }
     }
@@ -126,6 +128,7 @@ enum ModelSelection: String, CaseIterable {
         case .fireworksKimiK3:  return "Kimi K3"
         case .fireworksKimiK26: return "Kimi K2.6"
         case .fireworksGLM52:  return "GLM 5.2"
+        case .fireworksDeepSeekV4Flash0731: return "DeepSeek-V4-Flash-0731"
         }
     }
 
@@ -146,6 +149,8 @@ enum ModelSelection: String, CaseIterable {
         case .fireworksKimiK3:  return "accounts/fireworks/models/kimi-k3"
         case .fireworksKimiK26: return "accounts/fireworks/models/kimi-k2p6"
         case .fireworksGLM52:  return "accounts/fireworks/models/glm-5p2"
+        case .fireworksDeepSeekV4Flash0731:
+            return "accounts/fireworks/models/deepseek-v4-flash-0731"
         }
     }
 
@@ -174,6 +179,7 @@ enum ModelSelection: String, CaseIterable {
         case .fireworksKimiK3:  return 1_048_576
         case .fireworksKimiK26: return 131_072
         case .fireworksGLM52:  return 1_048_576
+        case .fireworksDeepSeekV4Flash0731: return 1_064_960
         }
     }
 
@@ -219,6 +225,10 @@ enum ModelSelection: String, CaseIterable {
             return true
         case .fireworksGLM52:
             // GLM 5.2 on Fireworks is text-only — image turns fall back to Kimi.
+            return false
+        case .fireworksDeepSeekV4Flash0731:
+            // DeepSeek-V4-Flash on Fireworks is text-only — image turns fall
+            // back to Kimi.
             return false
         }
     }
