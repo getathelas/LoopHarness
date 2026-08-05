@@ -20,7 +20,7 @@ flowchart LR
 
     Workspace["Workspace<br/>SOUL, USER, MEMORY,<br/>AGENTS, tools, files"] --> Harness
     Keys["Keychain<br/>user-owned API keys"] --> Providers
-    Harness --> Providers["Model provider<br/>OpenAI, Anthropic, Amazon Bedrock,<br/>Fireworks, or Apple on-device"]
+    Harness --> Providers["Model provider<br/>OpenAI, Anthropic, Amazon Bedrock,<br/>Fireworks, DeepInfra, or Apple on-device"]
 
     Providers -->|"final text"| Surface
     Providers -->|"tool calls"| Dispatcher["SkillDispatcher"]
@@ -138,7 +138,7 @@ In more concrete terms:
    not carry the full catalog. Ambiguous requests can still receive the broad
    set.
 4. **Choose a model route.** Online requests go directly to the selected
-   OpenAI, Anthropic, or Fireworks client. Apple Foundation Models are used
+   OpenAI, Anthropic, Amazon Bedrock, Fireworks, or DeepInfra client. Apple Foundation Models are used
    when selected or when the device is offline and the on-device model is
    available. If an attachment needs vision and the chosen model cannot see
    images, that turn can be routed to a vision-capable model.

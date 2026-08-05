@@ -39,6 +39,8 @@
 	<string>$(BEDROCK_AWS_REGION)</string>
 	<key>FIREWORKS_API_KEY</key>
 	<string>$(FIREWORKS_API_KEY)</string>
+	<key>DEEPINFRA_API_KEY</key>
+	<string>$(DEEPINFRA_API_KEY)</string>
 	<key>CURSOR_API_KEY</key>
 	<string>$(CURSOR_API_KEY)</string>
 	<key>OBSIDIAN_API_KEY</key>

@@ -124,6 +124,10 @@ final class ModelPickerVC: UIViewController {
             return keyConfigured(.fireworks)
                 ? "Uses your Fireworks API key."
                 : "Needs a Fireworks API key. Add one in Settings ▸ Keys."
+        case .deepInfra:
+            return keyConfigured(.deepInfra)
+                ? "Uses your DeepInfra API key."
+                : "Needs a DeepInfra API key. Add one in Settings ▸ Keys."
         }
     }
 }
