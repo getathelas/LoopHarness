@@ -20,7 +20,7 @@ flowchart LR
 
     Workspace["Workspace<br/>SOUL, USER, MEMORY,<br/>AGENTS, tools, files"] --> Harness
     Keys["Keychain<br/>user-owned API keys"] --> Providers
-    Harness --> Providers["Model provider<br/>OpenAI, Anthropic, Fireworks,<br/>or Apple on-device"]
+    Harness --> Providers["Model provider<br/>OpenAI, Anthropic, Amazon Bedrock,<br/>Fireworks, or Apple on-device"]
 
     Providers -->|"final text"| Surface
     Providers -->|"tool calls"| Dispatcher["SkillDispatcher"]

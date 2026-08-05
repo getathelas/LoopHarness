@@ -352,7 +352,7 @@ private final class KeyInputRow: UIView, UITextFieldDelegate {
     /// else is a credential that should be entered into a secure field.
     private static func isSecret(_ key: KeyStore.Key) -> Bool {
         switch key {
-        case .obsidianBaseURL, .obsidianVaultName, .githubBaseURL, .devinOrgID:
+        case .obsidianBaseURL, .obsidianVaultName, .githubBaseURL, .devinOrgID, .bedrockRegion:
             return false
         default:
             return true

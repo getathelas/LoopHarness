@@ -5,13 +5,14 @@
 //  User-facing choice of which language model handles the next turn.
 //  Persisted in iCloud-KVS-backed UserDefaults so the pick survives
 //  relaunches and syncs across devices. Mac surfaces it as a grouped menu
-//  (Apple / OpenAI ▸ / Anthropic ▸); iOS reads the same store.
+//  (Apple / OpenAI ▸ / Anthropic ▸ / Amazon Bedrock ▸); iOS reads the same store.
 //
 //  AgentHarness reads `ModelSelectionStore.current` at dispatch time and
 //  routes by `.provider`:
 //    .apple     → on-device Apple Foundation model (FoundationModels)
 //    .openAI    → OpenAIChat   (direct, user's OPENAI_API_KEY)
 //    .anthropic → AnthropicChat (direct, user's ANTHROPIC_API_KEY)
+//    .bedrock   → BedrockChat   (direct, user's AWS_BEARER_TOKEN_BEDROCK)
 //    .fireworks → FireworksChat  (direct, user's FIREWORKS_API_KEY)
 //  Reachability still wins — offline always falls back to Apple, since the
 //  hosted providers can't work without a network. The selection is just the
@@ -46,6 +47,7 @@ enum ModelProvider: String, CaseIterable {
     static var firstKeyedProvider: ModelProvider? {
         let ranked: [(ModelProvider, KeyStore.Key)] = [
             (.anthropic, .anthropic),
+            (.bedrock, .bedrock),
             (.openAI, .openAI),
             (.fireworks, .fireworks),
         ]
@@ -65,6 +67,7 @@ enum ModelProvider: String, CaseIterable {
     case apple
     case openAI
     case anthropic
+    case bedrock
     case fireworks
 
     var displayName: String {
@@ -72,6 +75,7 @@ enum ModelProvider: String, CaseIterable {
         case .apple:     return "Apple"
         case .openAI:    return "OpenAI"
         case .anthropic: return "Anthropic"
+        case .bedrock:   return "Amazon Bedrock"
         case .fireworks: return "Fireworks"
         }
     }
@@ -94,6 +98,11 @@ enum ModelSelection: String, CaseIterable {
     case claudeSonnet46 = "claudeSonnet46"
     case claudeHaiku45  = "claudeHaiku45"
 
+    // Amazon Bedrock Mantle — Claude via the user's Bedrock API key.
+    case bedrockOpus5  = "bedrockOpus5"
+    case bedrockOpus48 = "bedrockOpus48"
+    case bedrockOpus47 = "bedrockOpus47"
+
     // Fireworks — models served via Fireworks inference.
     case fireworksKimiK3  = "fireworksKimiK3"
     case fireworksKimiK26 = "fireworksKimiK26"
@@ -108,6 +117,8 @@ enum ModelSelection: String, CaseIterable {
             return .openAI
         case .claudeOpus47, .claudeSonnet46, .claudeHaiku45:
             return .anthropic
+        case .bedrockOpus5, .bedrockOpus48, .bedrockOpus47:
+            return .bedrock
         case .fireworksKimiK3, .fireworksKimiK26, .fireworksGLM52,
              .fireworksDeepSeekV4Flash0731:
             return .fireworks
@@ -125,6 +136,9 @@ enum ModelSelection: String, CaseIterable {
         case .claudeOpus47:    return "Claude Opus 4.7"
         case .claudeSonnet46:  return "Claude Sonnet 4.6"
         case .claudeHaiku45:   return "Claude Haiku 4.5"
+        case .bedrockOpus5:    return "Claude Opus 5"
+        case .bedrockOpus48:   return "Claude Opus 4.8"
+        case .bedrockOpus47:   return "Claude Opus 4.7"
         case .fireworksKimiK3:  return "Kimi K3"
         case .fireworksKimiK26: return "Kimi K2.6"
         case .fireworksGLM52:  return "GLM 5.2"
@@ -146,7 +160,10 @@ enum ModelSelection: String, CaseIterable {
         case .claudeOpus47:    return "claude-opus-4-7"
         case .claudeSonnet46:  return "claude-sonnet-4-6"
         case .claudeHaiku45:   return "claude-haiku-4-5-20251001"
-        case .fireworksKimiK3:  return "accounts/fireworks/models/kimi-k3"
+        case .bedrockOpus5:    return "anthropic.claude-opus-5"
+        case .bedrockOpus48:   return "anthropic.claude-opus-4-8"
+        case .bedrockOpus47:   return "anthropic.claude-opus-4-7"
+        case .fireworksKimiK3:  return "accounts/fireworks/models/kimi-k3-fast"
         case .fireworksKimiK26: return "accounts/fireworks/models/kimi-k2p6"
         case .fireworksGLM52:  return "accounts/fireworks/models/glm-5p2"
         case .fireworksDeepSeekV4Flash0731:
@@ -159,6 +176,7 @@ enum ModelSelection: String, CaseIterable {
     var stampedMessageModel: String {
         switch provider {
         case .apple: return "Apple LLM"
+        case .bedrock: return "\(displayName) via Bedrock"
         default:     return displayName
         }
     }
@@ -176,6 +194,9 @@ enum ModelSelection: String, CaseIterable {
         case .claudeOpus47:     return 200_000
         case .claudeSonnet46:   return 200_000
         case .claudeHaiku45:    return 200_000
+        case .bedrockOpus5:     return 1_048_576
+        case .bedrockOpus48:    return 1_048_576
+        case .bedrockOpus47:    return 1_048_576
         case .fireworksKimiK3:  return 1_048_576
         case .fireworksKimiK26: return 131_072
         case .fireworksGLM52:  return 1_048_576
@@ -204,6 +225,7 @@ enum ModelSelection: String, CaseIterable {
         case .apple:     return nil
         case .openAI:    return .openAI
         case .anthropic: return .anthropic
+        case .bedrock:   return .bedrock
         case .fireworks: return .fireworks
         }
     }
@@ -220,6 +242,8 @@ enum ModelSelection: String, CaseIterable {
         case .gpt55, .gpt51, .gpt41, .gpt4o:
             return true
         case .claudeOpus47, .claudeSonnet46, .claudeHaiku45:
+            return true
+        case .bedrockOpus5, .bedrockOpus48, .bedrockOpus47:
             return true
         case .fireworksKimiK3, .fireworksKimiK26:
             return true
@@ -251,7 +275,7 @@ enum ModelSelection: String, CaseIterable {
         if let sameProvider = models(for: provider).first(where: { $0.supportsVision && $0.isUsable }) {
             return sameProvider
         }
-        for other in [ModelProvider.anthropic, .openAI, .fireworks] where other != provider {
+        for other in [ModelProvider.anthropic, .bedrock, .openAI, .fireworks] where other != provider {
             if let model = models(for: other).first(where: { $0.supportsVision && $0.isUsable }) {
                 return model
             }

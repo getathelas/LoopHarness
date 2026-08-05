@@ -54,7 +54,7 @@ final class ConversationTitleService {
     /// - There isn't a real user-AND-assistant exchange yet (e.g., still
     ///   in onboarding, or assistant turn was tool-only).
     /// - A request is already in flight for this id.
-    /// - No provider key (Anthropic or OpenAI) is configured.
+    /// - No provider key is configured and Apple Foundation is unavailable.
     ///
     /// Pass `preserveCustomTitle: false` for the periodic refresh path so
     /// previously-auto-generated titles get updated as the conversation's
@@ -175,7 +175,7 @@ final class ConversationTitleService {
         // their cloud key was cleared). Try the cheap-cloud fallbacks in
         // order, then on-device. This way someone on Apple still gets a
         // title via Haiku if they happen to have an Anthropic key paste'd.
-        for fallback in [ModelProvider.anthropic, .openAI, .fireworks, .apple] {
+        for fallback in [ModelProvider.anthropic, .bedrock, .openAI, .fireworks, .apple] {
             if fallback == preferred { continue }
             if let p = provider(for: fallback) { return p }
         }
@@ -193,6 +193,13 @@ final class ConversationTitleService {
         case .anthropic:
             if let key = KeyStore.shared.value(for: .anthropic), !key.isEmpty {
                 return .anthropic(key: key)
+            }
+            return nil
+        case .bedrock:
+            if let key = KeyStore.shared.value(for: .bedrock), !key.isEmpty {
+                let region = BedrockChat.normalizedRegion(KeyStore.shared.value(for: .bedrockRegion))
+                    ?? BedrockChat.defaultRegion
+                return .bedrock(key: key, region: region)
             }
             return nil
         case .openAI:
@@ -305,6 +312,7 @@ final class ConversationTitleService {
 /// keys during the request window).
 private enum TitleProvider {
     case anthropic(key: String)
+    case bedrock(key: String, region: String)
     case openAI(key: String)
     case fireworks(key: String)
     /// On-device via FoundationModels. No key, no network — slower than the
@@ -317,6 +325,9 @@ private enum TitleProvider {
         switch self {
         case .anthropic(let key):
             Self.sendAnthropic(key: key, snippet: snippet, session: session, completion: completion)
+        case .bedrock(let key, let region):
+            Self.sendBedrock(key: key, region: region, snippet: snippet,
+                             session: session, completion: completion)
         case .openAI(let key):
             Self.sendOpenAI(key: key, snippet: snippet, session: session, completion: completion)
         case .fireworks(let key):
@@ -373,6 +384,50 @@ Title this conversation in 3-5 words:
                   let content = json["content"] as? [[String: Any]],
                   let first = content.first,
                   let text = first["text"] as? String else {
+                completion(nil); return
+            }
+            completion(text)
+        }
+        task.resume()
+    }
+
+    // MARK: Amazon Bedrock (Claude Opus 4.7)
+
+    private static func sendBedrock(key: String,
+                                    region: String,
+                                    snippet: String,
+                                    session: URLSession,
+                                    completion: @escaping (String?) -> Void) {
+        guard let url = BedrockChat.endpoint(for: region) else {
+            completion(nil); return
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue(key, forHTTPHeaderField: "x-api-key")
+        req.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = [
+            "model": "anthropic.claude-opus-4-7",
+            "max_tokens": 32,
+            "system": systemPrompt,
+            "messages": [
+                ["role": "user", "content": userInstruction + snippet],
+            ],
+        ]
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        let task = session.dataTask(with: req) { data, response, error in
+            if let error {
+                print("TitleService Amazon Bedrock error: \(error.localizedDescription)")
+                completion(nil); return
+            }
+            if let http = response as? HTTPURLResponse, http.statusCode >= 400 {
+                print("TitleService Amazon Bedrock HTTP \(http.statusCode)")
+                completion(nil); return
+            }
+            guard let data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let content = json["content"] as? [[String: Any]],
+                  let text = content.first(where: { ($0["type"] as? String) == "text" })?["text"] as? String else {
                 completion(nil); return
             }
             completion(text)

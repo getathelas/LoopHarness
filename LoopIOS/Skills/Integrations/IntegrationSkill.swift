@@ -491,6 +491,8 @@ Tips:
         case .exa:                    return "exa"
         case .openAI:                 return "openai"
         case .anthropic:              return "anthropic"
+        case .bedrock:                return "bedrock"
+        case .bedrockRegion:          return "bedrock_region"
         case .fireworks:              return "fireworks"
         case .cursor:                 return "cursor"
         case .obsidianAPI:            return "obsidian_api"
@@ -555,6 +557,8 @@ Tips:
         switch n {
         case "openai", "open_ai", "open ai":                  return .openAI
         case "anthropic", "claude":                           return .anthropic
+        case "bedrock", "amazon_bedrock", "amazon bedrock": return .bedrock
+        case "bedrock_region", "bedrock region", "aws_region": return .bedrockRegion
         case "fireworks":                                     return .fireworks
         case "deepgram":                                      return .deepgram
         case "elevenlabs", "eleven_labs", "eleven labs":      return .elevenLabs

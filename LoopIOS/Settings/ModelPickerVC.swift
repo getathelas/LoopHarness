@@ -116,6 +116,10 @@ final class ModelPickerVC: UIViewController {
             return keyConfigured(.anthropic)
                 ? "Uses your Anthropic API key."
                 : "Needs an Anthropic API key. Add one in Settings ▸ Keys."
+        case .bedrock:
+            return keyConfigured(.bedrock)
+                ? "Uses your Amazon Bedrock API key. Region defaults to us-east-1."
+                : "Needs an Amazon Bedrock API key. Add one in Settings ▸ Keys."
         case .fireworks:
             return keyConfigured(.fireworks)
                 ? "Uses your Fireworks API key."

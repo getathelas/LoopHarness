@@ -44,6 +44,7 @@ final class VisionSummaryService {
     /// caption. Picked per-provider so the summary bills to a key the user
     /// already has.
     private static let anthropicVisionModel = "claude-haiku-4-5-20251001"
+    private static let bedrockVisionModel = "anthropic.claude-opus-4-7"
     private static let openAIVisionModel = "gpt-4o"
     private static let fireworksVisionModel = "accounts/fireworks/models/kimi-k2p6"
 
@@ -109,6 +110,9 @@ final class VisionSummaryService {
         case .anthropic:
             AnthropicChat.shared.chat(messages: [probe], tools: nil,
                                       modelIDOverride: target.modelID, completion: handle)
+        case .bedrock:
+            BedrockChat.shared.chat(messages: [probe], tools: nil,
+                                    modelIDOverride: target.modelID, completion: handle)
         case .openAI:
             OpenAIChat.shared.chat(messages: [probe], tools: nil,
                                    modelIDOverride: target.modelID, completion: handle)
@@ -157,10 +161,12 @@ final class VisionSummaryService {
     /// caller then falls back to on-device OCR.
     private static func visionTarget() -> VisionTarget? {
         let current = ModelSelectionStore.current.provider
-        for provider in [current, .anthropic, .openAI, .fireworks] {
+        for provider in [current, .anthropic, .bedrock, .openAI, .fireworks] {
             switch provider {
             case .anthropic where KeyStore.shared.source(for: .anthropic) != .missing:
                 return VisionTarget(provider: .anthropic, modelID: anthropicVisionModel)
+            case .bedrock where KeyStore.shared.source(for: .bedrock) != .missing:
+                return VisionTarget(provider: .bedrock, modelID: bedrockVisionModel)
             case .openAI where KeyStore.shared.source(for: .openAI) != .missing:
                 return VisionTarget(provider: .openAI, modelID: openAIVisionModel)
             case .fireworks where KeyStore.shared.source(for: .fireworks) != .missing:

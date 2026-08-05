@@ -28,6 +28,8 @@ final class KeyStore {
         case exa            = "EXA_API_KEY"
         case openAI         = "OPENAI_API_KEY"
         case anthropic      = "ANTHROPIC_API_KEY"
+        case bedrock        = "AWS_BEARER_TOKEN_BEDROCK"
+        case bedrockRegion  = "BEDROCK_AWS_REGION"
         case fireworks      = "FIREWORKS_API_KEY"
         case cursor         = "CURSOR_API_KEY"
         case obsidianAPI    = "OBSIDIAN_API_KEY"
@@ -60,6 +62,8 @@ final class KeyStore {
             case .exa:                    return "Exa"
             case .openAI:                 return "OpenAI"
             case .anthropic:              return "Anthropic"
+            case .bedrock:                return "Amazon Bedrock API Key"
+            case .bedrockRegion:          return "AWS Region"
             case .fireworks:              return "Fireworks"
             case .cursor:                 return "Cursor"
             case .obsidianAPI:            return "Obsidian API Key"
@@ -94,6 +98,8 @@ final class KeyStore {
             case .exa:                    return "Web search + answer skill"
             case .openAI:                 return "Image generation + OpenAI TTS, and GPT models for the agent"
             case .anthropic:              return "Claude models for the agent"
+            case .bedrock:                return "Claude Opus models through Amazon Bedrock"
+            case .bedrockRegion:          return "Optional Bedrock Mantle region · defaults to us-east-1"
             case .fireworks:              return "Fireworks inference platform (Kimi K2.6, etc.)"
             case .cursor:                 return "Cursor agent integration"
             case .obsidianAPI:            return "Bearer token for the Obsidian relay"
@@ -127,7 +133,7 @@ final class KeyStore {
     /// second). Adding a new key means: (a) add the `Key` case above, (b)
     /// either add a new `Service` case here or extend an existing one's `keys`.
     enum Service: String, CaseIterable {
-        case openAI, anthropic, fireworks, deepgram, elevenLabs, exa
+        case openAI, anthropic, bedrock, fireworks, deepgram, elevenLabs, exa
         case cursor, devin
         case github, slack, notion, obsidian
         case twitter
@@ -141,6 +147,7 @@ final class KeyStore {
             switch self {
             case .openAI:     return "OpenAI"
             case .anthropic:  return "Anthropic"
+            case .bedrock:    return "Amazon Bedrock"
             case .fireworks:  return "Fireworks"
             case .deepgram:   return "Deepgram"
             case .elevenLabs: return "ElevenLabs"
@@ -167,6 +174,7 @@ final class KeyStore {
             switch self {
             case .openAI:     return "Image generation, OpenAI TTS, and GPT models for the agent"
             case .anthropic:  return "Claude models for the agent"
+            case .bedrock:    return "Claude Opus models via Bedrock Mantle using your Amazon Bedrock API key"
             case .fireworks:  return "Fireworks inference platform — run Kimi K2.6 and other open models via Fireworks"
             case .deepgram:   return "Streaming STT + Aura TTS"
             case .elevenLabs: return "Expressive TTS voices"
@@ -194,6 +202,7 @@ final class KeyStore {
             switch self {
             case .openAI:     return [.openAI]
             case .anthropic:  return [.anthropic]
+            case .bedrock:    return [.bedrock, .bedrockRegion]
             case .fireworks:  return [.fireworks]
             case .deepgram:   return [.deepgram]
             case .elevenLabs: return [.elevenLabs]
@@ -330,7 +339,7 @@ final class KeyStore {
         // hide and the URL is the whole point. Same for the Devin org id,
         // which is a `org-…` identifier (not a secret) the user needs to be
         // able to read back when verifying their setup.
-        if key == .obsidianBaseURL || key == .obsidianVaultName || key == .githubBaseURL || key == .devinOrgID || key == .agentMailInbox {
+        if key == .obsidianBaseURL || key == .obsidianVaultName || key == .githubBaseURL || key == .devinOrgID || key == .agentMailInbox || key == .bedrockRegion {
             return raw
         }
         let suffixLen = 4
