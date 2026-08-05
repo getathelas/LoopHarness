@@ -552,6 +552,8 @@ final class AgentHarness {
             OpenAIChat.shared.chat(messages: rebuilt, tools: toolsToSend, modelIDOverride: modelIDOverride, modelStampOverride: modelStampOverride, onPartial: onPartial, completion: completion)
         case .fireworks:
             FireworksChat.shared.chat(messages: rebuilt, tools: toolsToSend, modelIDOverride: modelIDOverride, modelStampOverride: modelStampOverride, onPartial: onPartial, completion: completion)
+        case .together:
+            TogetherChat.shared.chat(messages: rebuilt, tools: toolsToSend, modelIDOverride: modelIDOverride, modelStampOverride: modelStampOverride, onPartial: onPartial, completion: completion)
         case .apple:
             // Unreachable — `.apple` returned via offlineRespond above. Kept
             // so the switch stays exhaustive if providers are added.

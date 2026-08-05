@@ -124,6 +124,10 @@ final class ModelPickerVC: UIViewController {
             return keyConfigured(.fireworks)
                 ? "Uses your Fireworks API key."
                 : "Needs a Fireworks API key. Add one in Settings ▸ Keys."
+        case .together:
+            return keyConfigured(.together)
+                ? "Uses your Together AI API key."
+                : "Needs a Together AI API key. Add one in Settings ▸ Keys."
         }
     }
 }

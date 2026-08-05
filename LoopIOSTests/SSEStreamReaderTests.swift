@@ -152,6 +152,22 @@ final class SSEStreamReaderTests: XCTestCase {
         XCTAssertEqual(result?.content, "Answer")
     }
 
+    func testTogetherReasoningField() {
+        let reasoningJSON: [String: Any] = [
+            "choices": [["delta": ["reasoning": "considering..."]]] as [[String: Any]],
+        ]
+        let data = try! JSONSerialization.data(withJSONObject: reasoningJSON)
+
+        let result = feedLines([
+            "data: \(String(data: data, encoding: .utf8)!)",
+            chunk(content: "Answer"),
+            "data: [DONE]",
+        ])
+
+        XCTAssertEqual(result?.reasoningContent, "considering...")
+        XCTAssertEqual(result?.content, "Answer")
+    }
+
     func testDoneMarkerIgnored() {
         let result = feedLines([
             chunk(content: "test"),

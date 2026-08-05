@@ -5,7 +5,7 @@
 //  User-facing choice of which language model handles the next turn.
 //  Persisted in iCloud-KVS-backed UserDefaults so the pick survives
 //  relaunches and syncs across devices. Mac surfaces it as a grouped menu
-//  (Apple / OpenAI ▸ / Anthropic ▸ / Amazon Bedrock ▸); iOS reads the same store.
+//  (grouped by provider); iOS reads the same store.
 //
 //  AgentHarness reads `ModelSelectionStore.current` at dispatch time and
 //  routes by `.provider`:
@@ -14,6 +14,7 @@
 //    .anthropic → AnthropicChat (direct, user's ANTHROPIC_API_KEY)
 //    .bedrock   → BedrockChat   (direct, user's AWS_BEARER_TOKEN_BEDROCK)
 //    .fireworks → FireworksChat  (direct, user's FIREWORKS_API_KEY)
+//    .together  → TogetherChat   (direct, user's TOGETHER_API_KEY)
 //  Reachability still wins — offline always falls back to Apple, since the
 //  hosted providers can't work without a network. The selection is just the
 //  user's *preferred* model when the network is available.
@@ -50,6 +51,7 @@ enum ModelProvider: String, CaseIterable {
             (.bedrock, .bedrock),
             (.openAI, .openAI),
             (.fireworks, .fireworks),
+            (.together, .together),
         ]
         for (provider, key) in ranked {
             if KeyStore.shared.source(for: key) != .missing {
@@ -69,6 +71,7 @@ enum ModelProvider: String, CaseIterable {
     case anthropic
     case bedrock
     case fireworks
+    case together
 
     var displayName: String {
         switch self {
@@ -77,6 +80,7 @@ enum ModelProvider: String, CaseIterable {
         case .anthropic: return "Anthropic"
         case .bedrock:   return "Amazon Bedrock"
         case .fireworks: return "Fireworks"
+        case .together:  return "Together AI"
         }
     }
 }
@@ -109,6 +113,9 @@ enum ModelSelection: String, CaseIterable {
     case fireworksGLM52  = "fireworksGLM52"
     case fireworksDeepSeekV4Flash0731 = "fireworksDeepSeekV4Flash0731"
 
+    // Together AI — DeepSeek models served via Together inference.
+    case togetherDeepSeekV4Flash0731 = "togetherDeepSeekV4Flash0731"
+
     var provider: ModelProvider {
         switch self {
         case .appleFoundation:
@@ -122,6 +129,8 @@ enum ModelSelection: String, CaseIterable {
         case .fireworksKimiK3, .fireworksKimiK26, .fireworksGLM52,
              .fireworksDeepSeekV4Flash0731:
             return .fireworks
+        case .togetherDeepSeekV4Flash0731:
+            return .together
         }
     }
 
@@ -143,6 +152,7 @@ enum ModelSelection: String, CaseIterable {
         case .fireworksKimiK26: return "Kimi K2.6"
         case .fireworksGLM52:  return "GLM 5.2"
         case .fireworksDeepSeekV4Flash0731: return "DeepSeek-V4-Flash-0731"
+        case .togetherDeepSeekV4Flash0731: return "DeepSeek V4 Flash 0731"
         }
     }
 
@@ -168,6 +178,7 @@ enum ModelSelection: String, CaseIterable {
         case .fireworksGLM52:  return "accounts/fireworks/models/glm-5p2"
         case .fireworksDeepSeekV4Flash0731:
             return "accounts/fireworks/models/deepseek-v4-flash-0731"
+        case .togetherDeepSeekV4Flash0731: return "deepseek-ai/DeepSeek-V4-Flash-0731"
         }
     }
 
@@ -177,6 +188,7 @@ enum ModelSelection: String, CaseIterable {
         switch provider {
         case .apple: return "Apple LLM"
         case .bedrock: return "\(displayName) via Bedrock"
+        case .together: return "\(displayName) via Together"
         default:     return displayName
         }
     }
@@ -201,6 +213,7 @@ enum ModelSelection: String, CaseIterable {
         case .fireworksKimiK26: return 131_072
         case .fireworksGLM52:  return 1_048_576
         case .fireworksDeepSeekV4Flash0731: return 1_064_960
+        case .togetherDeepSeekV4Flash0731: return 1_048_576
         }
     }
 
@@ -227,6 +240,7 @@ enum ModelSelection: String, CaseIterable {
         case .anthropic: return .anthropic
         case .bedrock:   return .bedrock
         case .fireworks: return .fireworks
+        case .together:  return .together
         }
     }
 
@@ -254,6 +268,8 @@ enum ModelSelection: String, CaseIterable {
             // DeepSeek-V4-Flash on Fireworks is text-only — image turns fall
             // back to Kimi.
             return false
+        case .togetherDeepSeekV4Flash0731:
+            return false
         }
     }
 
@@ -275,7 +291,7 @@ enum ModelSelection: String, CaseIterable {
         if let sameProvider = models(for: provider).first(where: { $0.supportsVision && $0.isUsable }) {
             return sameProvider
         }
-        for other in [ModelProvider.anthropic, .bedrock, .openAI, .fireworks] where other != provider {
+        for other in [ModelProvider.anthropic, .bedrock, .openAI, .fireworks, .together] where other != provider {
             if let model = models(for: other).first(where: { $0.supportsVision && $0.isUsable }) {
                 return model
             }

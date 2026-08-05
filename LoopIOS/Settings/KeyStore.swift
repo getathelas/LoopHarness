@@ -31,6 +31,7 @@ final class KeyStore {
         case bedrock        = "AWS_BEARER_TOKEN_BEDROCK"
         case bedrockRegion  = "BEDROCK_AWS_REGION"
         case fireworks      = "FIREWORKS_API_KEY"
+        case together       = "TOGETHER_API_KEY"
         case cursor         = "CURSOR_API_KEY"
         case obsidianAPI    = "OBSIDIAN_API_KEY"
         case obsidianBaseURL = "OBSIDIAN_BASE_URL"
@@ -65,6 +66,7 @@ final class KeyStore {
             case .bedrock:                return "Amazon Bedrock API Key"
             case .bedrockRegion:          return "AWS Region"
             case .fireworks:              return "Fireworks"
+            case .together:               return "Together AI"
             case .cursor:                 return "Cursor"
             case .obsidianAPI:            return "Obsidian API Key"
             case .obsidianBaseURL:        return "Obsidian Base URL"
@@ -101,6 +103,7 @@ final class KeyStore {
             case .bedrock:                return "Claude Opus models through Amazon Bedrock"
             case .bedrockRegion:          return "Optional Bedrock Mantle region · defaults to us-east-1"
             case .fireworks:              return "Fireworks inference platform (Kimi K2.6, etc.)"
+            case .together:               return "Together AI inference (DeepSeek V4 Flash 0731)"
             case .cursor:                 return "Cursor agent integration"
             case .obsidianAPI:            return "Bearer token for the Obsidian relay"
             case .obsidianBaseURL:        return "Public URL of the Obsidian relay"
@@ -133,7 +136,7 @@ final class KeyStore {
     /// second). Adding a new key means: (a) add the `Key` case above, (b)
     /// either add a new `Service` case here or extend an existing one's `keys`.
     enum Service: String, CaseIterable {
-        case openAI, anthropic, bedrock, fireworks, deepgram, elevenLabs, exa
+        case openAI, anthropic, bedrock, fireworks, together, deepgram, elevenLabs, exa
         case cursor, devin
         case github, slack, notion, obsidian
         case twitter
@@ -149,6 +152,7 @@ final class KeyStore {
             case .anthropic:  return "Anthropic"
             case .bedrock:    return "Amazon Bedrock"
             case .fireworks:  return "Fireworks"
+            case .together:   return "Together AI"
             case .deepgram:   return "Deepgram"
             case .elevenLabs: return "ElevenLabs"
             case .exa:        return "Exa"
@@ -176,6 +180,7 @@ final class KeyStore {
             case .anthropic:  return "Claude models for the agent"
             case .bedrock:    return "Claude Opus models via Bedrock Mantle using your Amazon Bedrock API key"
             case .fireworks:  return "Fireworks inference platform — run Kimi K2.6 and other open models via Fireworks"
+            case .together:   return "Run DeepSeek V4 Flash 0731 and other open models via Together AI"
             case .deepgram:   return "Streaming STT + Aura TTS"
             case .elevenLabs: return "Expressive TTS voices"
             case .exa:        return "Web search + answer skill"
@@ -204,6 +209,7 @@ final class KeyStore {
             case .anthropic:  return [.anthropic]
             case .bedrock:    return [.bedrock, .bedrockRegion]
             case .fireworks:  return [.fireworks]
+            case .together:   return [.together]
             case .deepgram:   return [.deepgram]
             case .elevenLabs: return [.elevenLabs]
             case .exa:        return [.exa]

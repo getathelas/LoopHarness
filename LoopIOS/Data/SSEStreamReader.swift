@@ -7,7 +7,8 @@
 //  response and incrementally assembles content deltas and tool-call
 //  fragments into a final `MessageStruct`.
 //
-//  Used by OpenAIChat and FireworksChat (both use the same SSE wire format).
+//  Used by OpenAIChat, FireworksChat, and TogetherChat (all use the same
+//  SSE wire format).
 //  Anthropic uses a different event schema — see AnthropicChat for its
 //  streaming path.
 //
@@ -18,7 +19,7 @@ import Foundation
 /// `MessageStruct`. Handles:
 ///   - Content deltas (`choices[0].delta.content`)
 ///   - Tool-call deltas (`choices[0].delta.tool_calls[].function.{name, arguments}`)
-///   - Reasoning content (`choices[0].delta.reasoning_content`)
+///   - Reasoning content (`choices[0].delta.reasoning_content` or `.reasoning`)
 ///   - Usage object on the final chunk (when `stream_options.include_usage` is set)
 ///   - `[DONE]` sentinel
 final class SSEStreamReader: NSObject, URLSessionDataDelegate {
@@ -168,7 +169,9 @@ final class SSEStreamReader: NSObject, URLSessionDataDelegate {
         }
 
         // Reasoning content delta
-        if let reasoning = delta["reasoning_content"] as? String, !reasoning.isEmpty {
+        if let reasoning = (delta["reasoning_content"] as? String)
+            ?? (delta["reasoning"] as? String),
+           !reasoning.isEmpty {
             reasoningBuffer += reasoning
         }
 

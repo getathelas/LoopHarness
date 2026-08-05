@@ -648,8 +648,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return item
         }
 
-        // One section per provider, in `ModelProvider` order (Apple, OpenAI,
-        // Anthropic). Single-model providers (Apple) render as a flat item;
+        // One section per provider, in `ModelProvider` order. Single-model
+        // providers (Apple, Together AI) render as a flat item;
         // multi-model providers get a submenu, with the checkmark mirrored
         // onto the parent so the active provider shows without opening it.
         for provider in ModelProvider.allCases {

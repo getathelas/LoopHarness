@@ -42,12 +42,14 @@ enum VMAgentRuntime {
         case .bedrock:   if let k = key(.bedrock),   let m = sel.apiModelID { return ("bedrock", m, k, sel.displayName) }
         case .openAI:    if let k = key(.openAI),    let m = sel.apiModelID { return ("openai", m, k, sel.displayName) }
         case .fireworks: if let k = key(.fireworks), let m = sel.apiModelID { return ("fireworks", m, k, sel.displayName) }
+        case .together:  if let k = key(.together),  let m = sel.apiModelID { return ("together", m, k, sel.displayName) }
         case .apple: break
         }
         if let k = key(.openAI)    { return ("openai", "gpt-4o", k, "GPT-4o") }
         if let k = key(.anthropic) { return ("anthropic", "claude-sonnet-4-6", k, "Claude Sonnet 4.6") }
         if let k = key(.bedrock)   { return ("bedrock", "anthropic.claude-opus-4-7", k, "Claude Opus 4.7") }
         if let k = key(.fireworks) { return ("fireworks", "accounts/fireworks/models/kimi-k2p6", k, "Kimi K2.6") }
+        if let k = key(.together)  { return ("together", "deepseek-ai/DeepSeek-V4-Flash-0731", k, "DeepSeek V4 Flash 0731") }
         return nil
     }
 
@@ -217,9 +219,12 @@ try:
         base = "https://bedrock-mantle.%s.api.aws/anthropic/v1/messages" % region
         text = run_anthropic(key, model, system, conv, base)
     else:
-        base = ("https://api.fireworks.ai/inference/v1/chat/completions"
-                if provider == "fireworks"
-                else "https://api.openai.com/v1/chat/completions")
+        if provider == "fireworks":
+            base = "https://api.fireworks.ai/inference/v1/chat/completions"
+        elif provider == "together":
+            base = "https://api.together.xyz/v1/chat/completions"
+        else:
+            base = "https://api.openai.com/v1/chat/completions"
         text = run_openai(base, key, model, msgs)
 except urllib.error.HTTPError as e:
     err = "HTTP %s: %s" % (e.code, e.read().decode("utf-8", "ignore")[:200])

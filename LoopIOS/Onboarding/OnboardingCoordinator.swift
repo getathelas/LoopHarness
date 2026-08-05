@@ -128,6 +128,7 @@ final class OnboardingCoordinator {
         static let modelBedrock      = "model.bedrock"
         static let modelOpenAI       = "model.openai"
         static let modelFireworks    = "model.fireworks"
+        static let modelTogether     = "model.together"
         static let skipKey           = "key.skip"
         static let connectNotion     = "integration.notion"
         static let connectGitHub     = "integration.github"
@@ -304,6 +305,12 @@ final class OnboardingCoordinator {
                 pendingKeyProvider = .fireworks
                 selectModel(for: .fireworks)
                 advanceAfterModelPick(.fireworks)
+            } else if lower.contains("together") || lower.contains("deepseek") {
+                let verb = KeyStore.shared.source(for: .together) != .missing ? "Use" : "Add"
+                commitAnswer(echo: "\(verb) Together AI")
+                pendingKeyProvider = .together
+                selectModel(for: .together)
+                advanceAfterModelPick(.together)
             } else {
                 echoUser(trimmed)
             }
@@ -492,6 +499,13 @@ final class OnboardingCoordinator {
             pendingKeyProvider = .fireworks
             selectModel(for: .fireworks)
             advanceAfterModelPick(.fireworks)
+
+        case (.greeting, ChipId.modelTogether),
+             (.modelChoice, ChipId.modelTogether):
+            commitAnswer(echo: label)
+            pendingKeyProvider = .together
+            selectModel(for: .together)
+            advanceAfterModelPick(.together)
 
         case (.keyPaste, ChipId.skipKey):
             commitAnswer(echo: label)
@@ -684,6 +698,8 @@ final class OnboardingCoordinator {
                 ? "Use Bedrock" : "Add Bedrock"
             let fireworksLabel = KeyStore.shared.source(for: .fireworks) != .missing
                 ? "Use Fireworks" : "Add Fireworks"
+            let togetherLabel = KeyStore.shared.source(for: .together) != .missing
+                ? "Use Together AI" : "Add Together AI"
             let greetingText: String
             if ModelProvider.hasAnyProviderKey {
                 greetingText = "Nice to meet you! **Let's get set up with this Harness.**\n\nI'm running inference with \(current.displayName). Want to try something else? Tap or type below to plug in a key."
@@ -712,6 +728,9 @@ final class OnboardingCoordinator {
             }
             if currentProvider != .fireworks {
                 chips.append(.init(id: ChipId.modelFireworks, label: fireworksLabel))
+            }
+            if currentProvider != .together {
+                chips.append(.init(id: ChipId.modelTogether, label: togetherLabel))
             }
 
             return assistantMessage(
@@ -910,7 +929,7 @@ final class OnboardingCoordinator {
 
     /// Set the flagship model for the given provider as the active selection
     /// so the next message routes through it. Called when the user picks a
-    /// provider chip (Claude/OpenAI/Bedrock/Fireworks) AND again when they actually
+    /// provider chip (Claude/OpenAI/Bedrock/Fireworks/Together) AND again when they actually
     /// paste a key — both writes are idempotent. Mirrors what ModelPickerVC
     /// does.
     private func selectModel(for key: KeyStore.Key) {
@@ -920,6 +939,7 @@ final class OnboardingCoordinator {
         case .bedrock:   selection = .bedrockOpus5
         case .openAI:    selection = .gpt55
         case .fireworks: selection = .fireworksKimiK26
+        case .together:  selection = .togetherDeepSeekV4Flash0731
         default:         selection = nil
         }
         if let s = selection {
