@@ -60,6 +60,14 @@ final class SubAgentManager {
             name: .cursorAgentsDidChange,
             object: nil
         )
+        #if os(macOS)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(remoteJobsDidChange),
+            name: .codexAgentsDidChange,
+            object: nil
+        )
+        #endif
     }
 
     @objc private func remoteJobsDidChange() {
@@ -174,7 +182,14 @@ final class SubAgentManager {
         let cursor = CursorAgentService.shared.allJobs().filter { job in
             !job.isTerminal && matches(conversationId, candidate: job.conversationId)
         }.count
-        return native + devin + cursor
+        #if os(macOS)
+        let codex = CodexAgentService.shared.allJobs().filter { job in
+            !job.isTerminal && matches(conversationId, candidate: job.conversationId)
+        }.count
+        #else
+        let codex = 0
+        #endif
+        return native + devin + cursor + codex
     }
 
     /// True if anything in the union is in an "actively making progress" state
@@ -191,6 +206,11 @@ final class SubAgentManager {
         if CursorAgentService.shared.allJobs().contains(where: { job in
             !job.isTerminal && matches(conversationId, candidate: job.conversationId)
         }) { return true }
+        #if os(macOS)
+        if CodexAgentService.shared.allJobs().contains(where: { job in
+            !job.isTerminal && matches(conversationId, candidate: job.conversationId)
+        }) { return true }
+        #endif
         return false
     }
 
@@ -203,7 +223,14 @@ final class SubAgentManager {
         let cursor = CursorAgentService.shared.allJobs().filter { job in
             !job.isTerminal && matches(conversationId, candidate: job.conversationId)
         }.count
-        return devin + cursor
+        #if os(macOS)
+        let codex = CodexAgentService.shared.allJobs().filter { job in
+            !job.isTerminal && matches(conversationId, candidate: job.conversationId)
+        }.count
+        #else
+        let codex = 0
+        #endif
+        return devin + cursor + codex
     }
 
     /// Conversation scoping rule shared by the aggregate helpers: a nil filter

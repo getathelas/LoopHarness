@@ -3963,9 +3963,9 @@ extension MessagingVC {
 
 extension MessagingVC {
 
-    /// Default ElevenLabs voice. Rachel — clear, warm, common default. Override
+    /// Default ElevenLabs voice. Friendly Californian. Override
     /// by adding ELEVEN_LABS_VOICE_ID to Info.plist.
-    fileprivate static let elevenLabsDefaultVoiceId = "21m00Tcm4TlvDq8ikWAM"
+    fileprivate static let elevenLabsDefaultVoiceId = "c3VtJKuoGvBc0vUNQf8k"
 
     /// Default OpenAI voice. "shimmer" is warm and conversational. Override
     /// via OPENAI_TTS_VOICE in Info.plist (alloy, echo, fable, onyx, nova,

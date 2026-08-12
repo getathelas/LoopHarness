@@ -203,6 +203,30 @@ does not become the main chat; when it finishes, a summary is posted back to
 the parent conversation. Research/general agents have runtime limits, while
 coding agents are designed to continue until completion or manual cancellation.
 
+### Local Codex agents on macOS
+
+The Mac target can also delegate repository work to the locally installed
+[Codex app server](https://developers.openai.com/codex/app-server). Loop owns
+one newline-delimited JSON connection to `codex app-server --listen stdio://`,
+performs the required `initialize` handshake, and maps each dispatched task to
+a Codex thread and turn.
+
+[`CodexSkill.swift`](../LoopMac/Codex/CodexSkill.swift) exposes project
+discovery, single-agent dispatch, three-project fan-out, listing, continuation,
+and cancellation to the main Loop model. [`CodexAgentService.swift`](../LoopMac/Codex/CodexAgentService.swift)
+persists the project/job registry and posts terminal results back into the
+conversation that launched them. The Mac Integrations window provides the same
+project registry and job details directly to the user.
+
+Safety is project-scoped: history-discovered and newly added projects default
+to `readOnly`; `workspaceWrite` must be enabled explicitly for that registered
+directory, only one write agent may run per project, and Loop never requests
+`dangerFullAccess`. App-server turns use `approvalPolicy: never`, so an action
+that cannot run inside the selected sandbox fails closed instead of leaving an
+unattended approval prompt. If Loop quits during a turn, the persisted job is
+marked interrupted at the next launch and can be continued on its existing
+Codex thread.
+
 ### Scheduled work
 
 [`BackgroundScheduler.swift`](../LoopIOS/Skills/Scheduler/BackgroundScheduler.swift)

@@ -87,6 +87,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         )
 
+        // Local Codex integration. The model can discover registered project
+        // directories and fan app-server agents out across them. It is Mac-
+        // only because the transport owns a local Codex CLI child process.
+        AgentHarness.shared.registerSkill(
+            tools: CodexSkill.tools,
+            systemPromptFragment: CodexSkill.systemPromptFragment
+        )
+        SkillDispatcher.shared.register(
+            handles: { CodexSkill.shared.handles(functionName: $0) },
+            handle: { call, completion in
+                CodexSkill.shared.handle(functionCall: call, completion: completion)
+            }
+        )
+        CodexAgentService.shared.resumePending()
+
         // Image generation. ImageSkill itself is target-agnostic — the iOS
         // build registers it via the global `tools` constant; on Mac we wire
         // it explicitly here, alongside the host plumbing below, so the model

@@ -29,6 +29,9 @@ conversations.
   storage; the agent reads and writes its own long-term knowledge.
 - **Sub-agents** — spawn isolated agents for multi-step background tasks
   (`LoopIOS/SubAgents/`).
+- **Local Codex delegation (macOS)** — discover registered projects and fan
+  tasks out to Codex app-server agents with explicit read-only or workspace-
+  write access (`LoopMac/Codex/`).
 - **Voice pipeline** — push-to-talk capture, Deepgram STT, ElevenLabs/Apple
   TTS, and speech sanitization (`LoopIOS/SpeechPipeline/`, `LoopMac/`).
 - **Obsidian integration** — read/write an Obsidian vault through a
@@ -47,7 +50,7 @@ LoopIOS/               iOS app
   SpeechPipeline/       STT/TTS + sanitization
   Settings/KeyStore     Keychain-first credential store
   Data/                 conversation + memory persistence
-LoopMac/               macOS app (menu-bar, voice, terminal skill)
+LoopMac/               macOS app (menu-bar, voice, terminal + Codex skills)
 LoopShare/             iOS share extension
 LoopIOSShare/ LoopMacShare/   share-extension targets
 scripts/               Python helper/deploy utilities

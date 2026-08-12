@@ -204,6 +204,12 @@ final class ConversationWindowController: NSWindowController, ConversationPresen
             name: .cursorAgentDidPostMessage,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(subAgentDidPostMessage(_:)),
+            name: .codexAgentDidPostMessage,
+            object: nil
+        )
         // Each coordinator broadcasts its state transitions; refresh the tab
         // bar so the "running" dot can appear/disappear on background tabs.
         NotificationCenter.default.addObserver(
