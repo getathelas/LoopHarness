@@ -277,6 +277,22 @@ final class KeyStore {
     /// into the same Apple ID). Bumped if the migration shape ever changes.
     private static let syncMigrationFlag = "loop.keystore.migratedToSync.v1"
 
+    /// Legacy-key discovery can involve one Security query per supported
+    /// credential. On a fresh install the scan runs before its one-shot flag
+    /// exists, and synchronizable Keychain setup may still be settling. Keep
+    /// that work off the app-launch thread so UIKit can present the first
+    /// scene immediately.
+    private let migrationQueue = DispatchQueue(
+        label: "loop.keystore.migration",
+        qos: .utility
+    )
+
+    /// Serializes a migration write with an explicit user write. Reads remain
+    /// lock-free; Security.framework itself is thread-safe, and a read may
+    /// safely observe either the legacy or migrated value while the one-shot
+    /// copy is in flight.
+    private let mutationLock = NSLock()
+
     private static let log = Logger(subsystem: "com.bhat.intel", category: "KeyStore")
 
     /// Human-readable text for an `OSStatus` so swallowed Keychain failures
@@ -286,7 +302,9 @@ final class KeyStore {
     }
 
     private init() {
-        migrateToSynchronizableIfNeeded()
+        migrationQueue.async { [weak self] in
+            self?.migrateToSynchronizableIfNeeded()
+        }
     }
 
     // MARK: - Reads
@@ -322,11 +340,13 @@ final class KeyStore {
     func setValue(_ value: String?, for key: Key) -> Bool {
         let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
         let ok: Bool
+        mutationLock.lock()
         if let v = trimmed, !v.isEmpty {
             ok = writeKeychain(value: v, account: key.rawValue) == errSecSuccess
         } else {
             ok = deleteKeychain(account: key.rawValue)
         }
+        mutationLock.unlock()
         NotificationCenter.default.post(
             name: KeyStore.didChangeNotification,
             object: nil,
@@ -471,12 +491,19 @@ final class KeyStore {
 
         for key in Key.allCases {
             guard let legacy = legacyKeychainValue(for: key), !legacy.isEmpty else { continue }
-            // Only drop the legacy device-local copy once the synchronizable
-            // write actually succeeds — otherwise a failed migration would
-            // destroy the user's key.
-            if writeKeychain(value: legacy, account: key.rawValue) == errSecSuccess {
+
+            mutationLock.lock()
+            // A user may save a new value while the background scan is in
+            // flight. Never overwrite that newer synchronizable value with
+            // the legacy copy; either way, the old device-local item can be
+            // removed once a synchronizable value is known to exist.
+            let alreadyMigrated = keychainValue(for: key) != nil
+            let copied = alreadyMigrated
+                || writeKeychain(value: legacy, account: key.rawValue) == errSecSuccess
+            if copied {
                 SecItemDelete(legacyBaseQuery(account: key.rawValue) as CFDictionary)
             }
+            mutationLock.unlock()
         }
         defaults.set(true, forKey: KeyStore.syncMigrationFlag)
     }
