@@ -45,6 +45,11 @@ final class ConversationWindowController: NSWindowController, ConversationPresen
     private let stack = NSStackView()
     private let thinkingLabel = NSTextField(labelWithString: "")
     private let avatarView = AvatarView()
+    /// The one transient assistant row for the active tab. Provider deltas
+    /// mutate its text view in place; the completed persisted message replaces
+    /// it when the request finishes.
+    private weak var streamingAssistantRow: NSView?
+    private weak var streamingAssistantTextView: ChatLinkTextView?
     /// Tappable "N sub-agents running" pill that sits between the avatar and
     /// the scroll view. Hides itself when no agents are alive.
     private let subAgentStatusBar = SubAgentMacStatusBar()
@@ -890,6 +895,8 @@ final class ConversationWindowController: NSWindowController, ConversationPresen
 
     private func rebuild(messages: [SimpleMessage]) {
         for view in stack.arrangedSubviews { stack.removeArrangedSubview(view); view.removeFromSuperview() }
+        streamingAssistantRow = nil
+        streamingAssistantTextView = nil
         // Forget the bubble views — they're being torn down. The attachment
         // map survives so we can re-render their state below.
         imageBubbles.removeAll()
@@ -1007,7 +1014,8 @@ final class ConversationWindowController: NSWindowController, ConversationPresen
                     } else if let gallery = m.imageGalleryAttachment {
                         stack.addArrangedSubview(makeImageGalleryRow(bubbleView: ImageGalleryBubbleView(attachment: gallery)))
                     } else {
-                        stack.addArrangedSubview(makeBubble(role: message.role, text: message.content, model: m.role == "assistant" ? m.model : nil))
+                        let caption = m.role == "assistant" ? modelText(for: m) : nil
+                        stack.addArrangedSubview(makeBubble(role: message.role, text: message.content, model: caption))
                     }
                 }
 
@@ -1029,6 +1037,14 @@ final class ConversationWindowController: NSWindowController, ConversationPresen
             default:
                 continue
             }
+        }
+        // A store refresh or tab activation rebuilds only persisted messages.
+        // Restore this tab's in-flight partial immediately afterwards so it
+        // does not disappear while the provider is still streaming.
+        if let tab = activeTab,
+           !tab.streamingAssistantText.isEmpty {
+            renderStreamingAssistant(tab.streamingAssistantText,
+                                     model: tab.streamingAssistantModel ?? ModelSelectionStore.current.stampedMessageModel)
         }
         scrollToBottom()
     }
@@ -1190,12 +1206,34 @@ final class ConversationWindowController: NSWindowController, ConversationPresen
         scrollToBottom()
     }
 
+    func appendAssistantMessage(_ message: MessageStruct) {
+        clearStreamingAssistant()
+        appendAssistantMessage(message.content, model: modelText(for: message))
+    }
+
+    /// Text/model overload retained for scripted onboarding bubbles, which do
+    /// not carry provider metrics and intentionally omit the model caption.
     func appendAssistantMessage(_ text: String, model: String?) {
         stack.addArrangedSubview(makeBubble(role: "assistant", text: text, model: model))
         scrollToBottom()
         // Speaking starts immediately after the assistant text lands, so
         // this is the right moment to make sure the window is on screen.
         surfaceForResponse()
+    }
+
+    func appendAssistantDelta(_ delta: String, model: String) {
+        guard !delta.isEmpty else { return }
+        let accumulated = (streamingAssistantTextView?.string ?? "") + delta
+        renderStreamingAssistant(accumulated, model: model)
+    }
+
+    func clearStreamingAssistant() {
+        if let row = streamingAssistantRow {
+            stack.removeArrangedSubview(row)
+            row.removeFromSuperview()
+        }
+        streamingAssistantRow = nil
+        streamingAssistantTextView = nil
     }
 
     func setThinking(_ thinking: Bool, label: String?) {
@@ -1235,7 +1273,10 @@ final class ConversationWindowController: NSWindowController, ConversationPresen
         avatarView.pulse()
     }
 
-    private func makeBubble(role: String, text: String, model: String?) -> NSView {
+    private func makeBubble(role: String,
+                            text: String,
+                            model: String?,
+                            captureAssistantTextView: ((ChatLinkTextView) -> Void)? = nil) -> NSView {
         let isUser = role == "user"
         // AdaptiveBubbleView for user turns so the systemBlue fill
         // re-resolves on appearance change; assistant turns stay a plain
@@ -1265,12 +1306,14 @@ final class ConversationWindowController: NSWindowController, ConversationPresen
             label.textColor = .white
             label.stringValue = text
             contentView = label
-        } else if MarkdownSegmenter.containsRichContent(in: text) {
+        } else if captureAssistantTextView == nil,
+                  MarkdownSegmenter.containsRichContent(in: text) {
             contentView = makeAssistantRichContentView(text: text, maxWidth: 380 - 24)
         } else {
             let tv = ChatLinkTextView.makeBubbleTextView(maxTextWidth: 380 - 24)
             tv.delegate = self
             tv.textStorage?.setAttributedString(Self.markdownAttributedString(from: text))
+            captureAssistantTextView?(tv)
             contentView = tv
         }
         contentView.translatesAutoresizingMaskIntoConstraints = false
@@ -1332,6 +1375,47 @@ final class ConversationWindowController: NSWindowController, ConversationPresen
         }
         bubble.widthAnchor.constraint(lessThanOrEqualToConstant: 380).isActive = true
         return row
+    }
+
+    /// Match the iOS byline: model name, time-to-first-token, then context use
+    /// when the provider returned usage and the selected model has a known
+    /// context window.
+    private func modelText(for message: MessageStruct) -> String {
+        var text = message.model
+        if let ttft = message.ttft {
+            text += String(format: " %.2fs", ttft)
+        }
+        if let usage = message.tokenUsage,
+           let window = ModelSelection.contextWindowSize(forStamp: message.model),
+           let percent = usage.contextPercent(windowSize: window) {
+            text += " | Context \(percent)%"
+        }
+        return text
+    }
+
+    /// Create the transient row on the first delta, then update its text view
+    /// in place. Rich markdown/table segmentation waits until completion so a
+    /// half-written table cannot churn the view hierarchy on every token.
+    private func renderStreamingAssistant(_ text: String, model: String) {
+        guard !text.isEmpty else { return }
+        if let textView = streamingAssistantTextView {
+            textView.textStorage?.setAttributedString(Self.markdownAttributedString(from: text))
+            textView.invalidateIntrinsicContentSize()
+            textView.superview?.invalidateIntrinsicContentSize()
+        } else {
+            var captured: ChatLinkTextView?
+            let row = makeBubble(
+                role: "assistant",
+                text: text,
+                model: model,
+                captureAssistantTextView: { captured = $0 }
+            )
+            streamingAssistantRow = row
+            streamingAssistantTextView = captured
+            stack.addArrangedSubview(row)
+        }
+        scrollToBottom()
+        surfaceForResponse()
     }
 
     /// Render a user-uploaded attachment as a bubble, with any accompanying
@@ -3096,9 +3180,26 @@ final class TabConversationPresenter: ConversationPresenter {
         window?.appendUserAttachment(attachment, text: text)
     }
 
-    func appendAssistantMessage(_ text: String, model: String?) {
+    func appendAssistantMessage(_ message: MessageStruct) {
+        tab?.streamingAssistantText = ""
+        tab?.streamingAssistantModel = nil
         guard isForeground else { return }
-        window?.appendAssistantMessage(text, model: model)
+        window?.appendAssistantMessage(message)
+    }
+
+    func appendAssistantDelta(_ delta: String, model: String) {
+        guard let tab = tab, !delta.isEmpty else { return }
+        tab.streamingAssistantText += delta
+        tab.streamingAssistantModel = model
+        guard isForeground else { return }
+        window?.appendAssistantDelta(delta, model: model)
+    }
+
+    func clearStreamingAssistant() {
+        tab?.streamingAssistantText = ""
+        tab?.streamingAssistantModel = nil
+        guard isForeground else { return }
+        window?.clearStreamingAssistant()
     }
 
     func setThinking(_ thinking: Bool, label: String?) {

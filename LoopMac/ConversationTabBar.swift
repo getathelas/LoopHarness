@@ -34,6 +34,11 @@ final class ConversationTab {
     /// restores its own thinking state instead of whatever was last visible.
     var isThinking: Bool = false
     var thinkingLabel: String?
+    /// Transient provider output for an in-flight turn. This lives on the tab
+    /// (not the window) so switching away and back can restore the partial
+    /// response while background tabs continue streaming independently.
+    var streamingAssistantText: String = ""
+    var streamingAssistantModel: String?
 
     init(conversation: SimpleConversation, coordinator: VoiceLoopCoordinator) {
         self.conversation = conversation

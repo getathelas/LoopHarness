@@ -38,7 +38,14 @@ protocol ConversationPresenter: AnyObject {
     /// followed by accompanying text underneath. Mirrors `appendUserMessage`'s
     /// fast-path that adds a row without reloading the whole conversation.
     func appendUserAttachment(_ attachment: FileAttachment, text: String?)
-    func appendAssistantMessage(_ text: String, model: String?)
+    /// Append a completed assistant response. Pass the whole message so the
+    /// presenter can render provider timing/usage metadata alongside the model.
+    func appendAssistantMessage(_ message: MessageStruct)
+    /// Add one provider-streamed text delta to the transient assistant bubble.
+    func appendAssistantDelta(_ delta: String, model: String)
+    /// Remove any transient assistant bubble (completion, tool hop, error,
+    /// cancellation, or conversation switch).
+    func clearStreamingAssistant()
     func setThinking(_ thinking: Bool, label: String?)
     /// Forward state transitions so the conversation window's avatar can
     /// reflect what Loop is doing. The presenter handles the mapping
@@ -640,6 +647,7 @@ The current date and time is \(now).
         conversationPresenter?.showAndReload()
         conversationPresenter?.avatarPulse()
         conversationPresenter?.setThinking(true, label: "Thinking…")
+        conversationPresenter?.clearStreamingAssistant()
 
         // Opportunistic context compaction: check thresholds and spawn a
         // background sub-agent if the context is large enough.
@@ -649,7 +657,10 @@ The current date and time is \(now).
         )
 
         state = .thinking
-        Cloud.connection.chat(messages: messages) { [weak self] response, error in
+        Cloud.connection.chat(
+            messages: messages,
+            onPartial: streamingHandler(for: token)
+        ) { [weak self] response, error in
             DispatchQueue.main.async {
                 if compactionTrigger == .hard, var r = response {
                     r.content += "\n\n(compacting context in the background)"
@@ -664,6 +675,7 @@ The current date and time is \(now).
     private func handleChatResponse(_ response: MessageStruct?, error: Error?, token: UUID) {
         guard currentTurnToken == token else { return }
         guard let response = response else {
+            conversationPresenter?.clearStreamingAssistant()
             EarconPlayer.shared.play(.error)
             if let error = error {
                 print("Mac chat error: \(error)")
@@ -687,7 +699,7 @@ The current date and time is \(now).
             msg.model = ModelSelectionStore.current.stampedMessageModel
             persistAssistant(msg)
             conversationPresenter?.setThinking(false, label: nil)
-            conversationPresenter?.appendAssistantMessage(msg.content, model: msg.model)
+            conversationPresenter?.appendAssistantMessage(msg)
             currentTurnToken = nil
             currentTurnUserMessageId = nil
             state = .idle
@@ -703,10 +715,14 @@ The current date and time is \(now).
 
         if message.role == "function" {
             // Tool result coming back from a skill — send to harness.
+            conversationPresenter?.clearStreamingAssistant()
             messages.append(message)
             state = .thinking
             conversationPresenter?.setThinking(true, label: "Thinking…")
-            Cloud.connection.chat(messages: messages) { [weak self] response, error in
+            Cloud.connection.chat(
+                messages: messages,
+                onPartial: streamingHandler(for: token)
+            ) { [weak self] response, error in
                 DispatchQueue.main.async { self?.handleChatResponse(response, error: error, token: token) }
             }
             return
@@ -717,6 +733,7 @@ The current date and time is \(now).
             // once (so the model sees its own call list on the next round-
             // trip), flip the shimmer to the first call's status, then fan
             // out every call concurrently and re-enter chat with all results.
+            conversationPresenter?.clearStreamingAssistant()
             messages.append(message)
             if let first = message.functions.first {
                 conversationPresenter?.setThinking(true, label: statusText(for: first))
@@ -727,14 +744,16 @@ The current date and time is \(now).
 
         // Plain assistant text — turn is complete.
         if !message.content.isEmpty {
+            conversationPresenter?.clearStreamingAssistant()
             persistAssistant(message)
             conversationPresenter?.setThinking(false, label: nil)
-            conversationPresenter?.appendAssistantMessage(message.content, model: message.model)
+            conversationPresenter?.appendAssistantMessage(message)
             conversationPresenter?.avatarPulse()
             currentTurnToken = nil
             currentTurnUserMessageId = nil
             speak(message.content)
         } else {
+            conversationPresenter?.clearStreamingAssistant()
             currentTurnToken = nil
             currentTurnUserMessageId = nil
             state = .idle
@@ -784,7 +803,11 @@ The current date and time is \(now).
         }
         state = .thinking
         conversationPresenter?.setThinking(true, label: "Thinking…")
-        Cloud.connection.chat(messages: messages) { [weak self] response, error in
+        conversationPresenter?.clearStreamingAssistant()
+        Cloud.connection.chat(
+            messages: messages,
+            onPartial: streamingHandler(for: token)
+        ) { [weak self] response, error in
             DispatchQueue.main.async { self?.handleChatResponse(response, error: error, token: token) }
         }
     }
@@ -1006,6 +1029,21 @@ The current date and time is \(now).
         }
     }
 
+    /// Bind provider deltas to the turn token so an escape/cancel or tab
+    /// conversation switch cannot paint stale text after the turn is gone.
+    /// `AgentHarness` invokes this callback on a URLSession delegate queue;
+    /// presenters are AppKit-facing, so hop to main before forwarding.
+    private func streamingHandler(for token: UUID) -> (String) -> Void {
+        let model = ModelSelectionStore.current.stampedMessageModel
+        return { [weak self] delta in
+            guard !delta.isEmpty else { return }
+            DispatchQueue.main.async {
+                guard let self = self, self.currentTurnToken == token else { return }
+                self.conversationPresenter?.appendAssistantDelta(delta, model: model)
+            }
+        }
+    }
+
     // MARK: - TTS
 
     /// Hands off to MacSpeechPlayer, which dispatches to the user's chosen
@@ -1068,6 +1106,7 @@ The current date and time is \(now).
             teardownStreaming()
         case .thinking:
             currentTurnToken = nil
+            conversationPresenter?.clearStreamingAssistant()
             if let userId = currentTurnUserMessageId, let conv = conversation {
                 SimpleConversationManager.shared.removeMessage(id: userId, from: conv)
                 if let refreshed = SimpleConversationManager.shared.getConversation(by: conv.id) {
