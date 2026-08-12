@@ -760,6 +760,7 @@ final class OnboardingCoordinator {
                 // Curated shortlist, in display order. Resolved against the
                 // provider's `voiceOptions` so labels/ids stay in sync.
                 let orderedVoiceIds = [
+                    "c3VtJKuoGvBc0vUNQf8k", // Friendly Californian
                     "ZSNL4hPqCnqoMPaI4jGX", // Hannah
                     "sIivXWc5MTlPIP3kJXhg", // Hayes
                     "M6ic45wruJGWAxLFEMNK", // Zoe
