@@ -22,9 +22,9 @@
 	<key>LSUIElement</key>
 	<false/>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Loop records your voice when you hold control + fn so it can transcribe and send it to the assistant.</string>
+	<string>Loop records your voice when you hold shift + control so it can transcribe and send it to the assistant.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Loop transcribes your speech when you hold control + fn so the assistant can hear what you say.</string>
+	<string>Loop transcribes your speech when you hold shift + control so the assistant can hear what you say.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>Loop reads your calendar to answer schedule questions and drafts new events for you to review before saving.</string>
 	<key>NSAppleMusicUsageDescription</key>
@@ -53,8 +53,14 @@
 	<string>$(OPENAI_API_KEY)</string>
 	<key>ANTHROPIC_API_KEY</key>
 	<string>$(ANTHROPIC_API_KEY)</string>
+	<key>AWS_BEARER_TOKEN_BEDROCK</key>
+	<string>$(AWS_BEARER_TOKEN_BEDROCK)</string>
+	<key>BEDROCK_AWS_REGION</key>
+	<string>$(BEDROCK_AWS_REGION)</string>
 	<key>FIREWORKS_API_KEY</key>
 	<string>$(FIREWORKS_API_KEY)</string>
+	<key>DEEPINFRA_API_KEY</key>
+	<string>$(DEEPINFRA_API_KEY)</string>
 	<key>OBSIDIAN_API_KEY</key>
 	<string>$(OBSIDIAN_API_KEY)</string>
 	<key>OBSIDIAN_BASE_URL</key>

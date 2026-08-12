@@ -125,8 +125,10 @@ final class OnboardingCoordinator {
         static let stayOnCurrent     = "model.stay"
         static let modelApple        = "model.apple"
         static let modelClaude       = "model.claude"
+        static let modelBedrock      = "model.bedrock"
         static let modelOpenAI       = "model.openai"
         static let modelFireworks    = "model.fireworks"
+        static let modelDeepInfra    = "model.deepinfra"
         static let skipKey           = "key.skip"
         static let connectNotion     = "integration.notion"
         static let connectGitHub     = "integration.github"
@@ -279,6 +281,12 @@ final class OnboardingCoordinator {
                 commitAnswer(echo: echo)
                 pinAppleFoundationModel()
                 advance(to: .integrationsOffer)
+            } else if lower.contains("bedrock") || lower.contains("amazon") || lower.contains("aws") {
+                let verb = KeyStore.shared.source(for: .bedrock) != .missing ? "Use" : "Add"
+                commitAnswer(echo: "\(verb) Amazon Bedrock")
+                pendingKeyProvider = .bedrock
+                selectModel(for: .bedrock)
+                advanceAfterModelPick(.bedrock)
             } else if lower.contains("claude") || lower.contains("anthropic") {
                 let verb = KeyStore.shared.source(for: .anthropic) != .missing ? "Use" : "Add"
                 commitAnswer(echo: "\(verb) Claude")
@@ -297,6 +305,12 @@ final class OnboardingCoordinator {
                 pendingKeyProvider = .fireworks
                 selectModel(for: .fireworks)
                 advanceAfterModelPick(.fireworks)
+            } else if lower.contains("deepinfra") || lower.contains("deepseek") {
+                let verb = KeyStore.shared.source(for: .deepInfra) != .missing ? "Use" : "Add"
+                commitAnswer(echo: "\(verb) DeepInfra")
+                pendingKeyProvider = .deepInfra
+                selectModel(for: .deepInfra)
+                advanceAfterModelPick(.deepInfra)
             } else {
                 echoUser(trimmed)
             }
@@ -472,12 +486,26 @@ final class OnboardingCoordinator {
             selectModel(for: .openAI)
             advanceAfterModelPick(.openAI)
 
+        case (.greeting, ChipId.modelBedrock),
+             (.modelChoice, ChipId.modelBedrock):
+            commitAnswer(echo: label)
+            pendingKeyProvider = .bedrock
+            selectModel(for: .bedrock)
+            advanceAfterModelPick(.bedrock)
+
         case (.greeting, ChipId.modelFireworks),
              (.modelChoice, ChipId.modelFireworks):
             commitAnswer(echo: label)
             pendingKeyProvider = .fireworks
             selectModel(for: .fireworks)
             advanceAfterModelPick(.fireworks)
+
+        case (.greeting, ChipId.modelDeepInfra),
+             (.modelChoice, ChipId.modelDeepInfra):
+            commitAnswer(echo: label)
+            pendingKeyProvider = .deepInfra
+            selectModel(for: .deepInfra)
+            advanceAfterModelPick(.deepInfra)
 
         case (.keyPaste, ChipId.skipKey):
             commitAnswer(echo: label)
@@ -666,8 +694,12 @@ final class OnboardingCoordinator {
                 ? "Use Claude" : "Add Claude"
             let openAILabel = KeyStore.shared.source(for: .openAI) != .missing
                 ? "Use OpenAI" : "Add OpenAI"
+            let bedrockLabel = KeyStore.shared.source(for: .bedrock) != .missing
+                ? "Use Bedrock" : "Add Bedrock"
             let fireworksLabel = KeyStore.shared.source(for: .fireworks) != .missing
                 ? "Use Fireworks" : "Add Fireworks"
+            let deepInfraLabel = KeyStore.shared.source(for: .deepInfra) != .missing
+                ? "Use DeepInfra" : "Add DeepInfra"
             let greetingText: String
             if ModelProvider.hasAnyProviderKey {
                 greetingText = "Nice to meet you! **Let's get set up with this Harness.**\n\nI'm running inference with \(current.displayName). Want to try something else? Tap or type below to plug in a key."
@@ -691,8 +723,14 @@ final class OnboardingCoordinator {
             if currentProvider != .openAI {
                 chips.append(.init(id: ChipId.modelOpenAI, label: openAILabel))
             }
+            if currentProvider != .bedrock {
+                chips.append(.init(id: ChipId.modelBedrock, label: bedrockLabel))
+            }
             if currentProvider != .fireworks {
                 chips.append(.init(id: ChipId.modelFireworks, label: fireworksLabel))
+            }
+            if currentProvider != .deepInfra {
+                chips.append(.init(id: ChipId.modelDeepInfra, label: deepInfraLabel))
             }
 
             return assistantMessage(
@@ -741,6 +779,7 @@ final class OnboardingCoordinator {
                 // Curated shortlist, in display order. Resolved against the
                 // provider's `voiceOptions` so labels/ids stay in sync.
                 let orderedVoiceIds = [
+                    "c3VtJKuoGvBc0vUNQf8k", // Friendly Californian
                     "ZSNL4hPqCnqoMPaI4jGX", // Hannah
                     "sIivXWc5MTlPIP3kJXhg", // Hayes
                     "M6ic45wruJGWAxLFEMNK", // Zoe
@@ -891,15 +930,17 @@ final class OnboardingCoordinator {
 
     /// Set the flagship model for the given provider as the active selection
     /// so the next message routes through it. Called when the user picks a
-    /// provider chip (Claude/OpenAI/Fireworks) AND again when they actually
+    /// provider chip (Claude/OpenAI/Bedrock/Fireworks/DeepInfra) AND again when they actually
     /// paste a key — both writes are idempotent. Mirrors what ModelPickerVC
     /// does.
     private func selectModel(for key: KeyStore.Key) {
         let selection: ModelSelection?
         switch key {
         case .anthropic: selection = .claudeSonnet46
+        case .bedrock:   selection = .bedrockOpus5
         case .openAI:    selection = .gpt55
         case .fireworks: selection = .fireworksKimiK26
+        case .deepInfra:  selection = .deepInfraDeepSeekV4Flash0731
         default:         selection = nil
         }
         if let s = selection {

@@ -159,12 +159,13 @@ final class SubAgentMacStatusBar: NSView {
 
 // MARK: - Inspector window
 
-/// Lightweight wrapper for Devin/Cursor cloud agent rows in the Mac inspector.
+/// Lightweight wrapper for remote and local coding-agent rows in the Mac inspector.
 /// Mirrors the iPhone `CloudAgentRow` enum so the two surfaces show the same
 /// information per row.
 private enum MacCloudAgentRow {
     case devin(DevinAgentJob)
     case cursor(CursorAgentJob)
+    case codex(CodexAgentJob)
 
     var title: String {
         switch self {
@@ -174,6 +175,7 @@ private enum MacCloudAgentRow {
                 .replacingOccurrences(of: "\n", with: " ")
             if trimmed.count <= 80 { return trimmed }
             return String(trimmed.prefix(77)) + "\u{2026}"
+        case .codex(let job): return job.displayTitle
         }
     }
 
@@ -181,6 +183,7 @@ private enum MacCloudAgentRow {
         switch self {
         case .devin(let job): return job.status.capitalized
         case .cursor(let job): return job.status.capitalized
+        case .codex(let job): return job.state.rawValue.capitalized
         }
     }
 
@@ -188,6 +191,7 @@ private enum MacCloudAgentRow {
         switch self {
         case .devin(let job): return job.isTerminal
         case .cursor(let job): return job.isTerminal
+        case .codex(let job): return job.isTerminal
         }
     }
 
@@ -195,6 +199,8 @@ private enum MacCloudAgentRow {
         switch self {
         case .devin: return "Devin"
         case .cursor: return "Cursor"
+        case .codex(let job):
+            return "Codex · \(URL(fileURLWithPath: job.projectPath).lastPathComponent)"
         }
     }
 
@@ -214,6 +220,13 @@ private enum MacCloudAgentRow {
             case "finished": return .systemGray
             case "error":    return .systemRed
             default:         return .systemGray
+            }
+        case .codex(let job):
+            switch job.state {
+            case .queued, .running: return .systemGreen
+            case .waiting: return .systemYellow
+            case .completed, .cancelled: return .systemGray
+            case .failed: return .systemRed
             }
         }
     }
@@ -359,8 +372,13 @@ final class SubAgentInspectorWindowController: NSWindowController, NSTableViewDa
             conversationId == nil || job.conversationId == conversationId
         }
         for job in cursorJobs where !job.isTerminal { cloud.append(.cursor(job)) }
+        let codexJobs = CodexAgentService.shared.allJobs().filter { job in
+            conversationId == nil || job.conversationId == conversationId
+        }
+        for job in codexJobs where !job.isTerminal { cloud.append(.codex(job)) }
         for job in devinJobs where job.isTerminal { cloud.append(.devin(job)) }
         for job in cursorJobs where job.isTerminal { cloud.append(.cursor(job)) }
+        for job in codexJobs where job.isTerminal { cloud.append(.codex(job)) }
 
         var next: [InspectorRow] = []
         if !nativeAgents.isEmpty {
@@ -469,6 +487,8 @@ final class SubAgentInspectorWindowController: NSWindowController, NSTableViewDa
                let url = URL(string: urlString) {
                 NSWorkspace.shared.open(url)
             }
+        case .cloud(.codex(let job)):
+            CodexAgentDetailWindowController.show(agentId: job.id)
         }
     }
 }

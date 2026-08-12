@@ -99,9 +99,10 @@ final class TTSSettings {
         ("Hannah (american female)",      "ZSNL4hPqCnqoMPaI4jGX"),
         ("Zoe (african american female)", "M6ic45wruJGWAxLFEMNK"),
         ("Agent (secret agent male)",     "ICIc5IiEgLitxGwyb7ZG"),
+        ("Friendly Californian",          "c3VtJKuoGvBc0vUNQf8k"),
     ]
 
-    private static let elevenLabsDefaultVoiceId = "21m00Tcm4TlvDq8ikWAM"
+    private static let elevenLabsDefaultVoiceId = "c3VtJKuoGvBc0vUNQf8k"
 
     func elevenLabsVoice(for provider: MacTTSProvider) -> String {
         switch provider {

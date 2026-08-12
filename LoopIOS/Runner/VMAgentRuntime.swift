@@ -39,13 +39,17 @@ enum VMAgentRuntime {
         let sel = ModelSelectionStore.current
         switch sel.provider {
         case .anthropic: if let k = key(.anthropic), let m = sel.apiModelID { return ("anthropic", m, k, sel.displayName) }
+        case .bedrock:   if let k = key(.bedrock),   let m = sel.apiModelID { return ("bedrock", m, k, sel.displayName) }
         case .openAI:    if let k = key(.openAI),    let m = sel.apiModelID { return ("openai", m, k, sel.displayName) }
         case .fireworks: if let k = key(.fireworks), let m = sel.apiModelID { return ("fireworks", m, k, sel.displayName) }
+        case .deepInfra: if let k = key(.deepInfra), let m = sel.apiModelID { return ("deepinfra", m, k, sel.displayName) }
         case .apple: break
         }
         if let k = key(.openAI)    { return ("openai", "gpt-4o", k, "GPT-4o") }
         if let k = key(.anthropic) { return ("anthropic", "claude-sonnet-4-6", k, "Claude Sonnet 4.6") }
+        if let k = key(.bedrock)   { return ("bedrock", "anthropic.claude-opus-4-7", k, "Claude Opus 4.7") }
         if let k = key(.fireworks) { return ("fireworks", "accounts/fireworks/models/kimi-k2p6", k, "Kimi K2.6") }
+        if let k = key(.deepInfra) { return ("deepinfra", "deepseek-ai/DeepSeek-V4-Flash-0731", k, "DeepSeek V4 Flash 0731") }
         return nil
     }
 
@@ -179,11 +183,11 @@ def run_openai(base, key, model, msgs):
                          "content": run_tool(c["function"]["name"], a)})
     return "(stopped after %d tool steps)" % MAX_STEPS
 
-def run_anthropic(key, model, system, msgs):
+def run_anthropic(key, model, system, msgs, base="https://api.anthropic.com/v1/messages"):
     headers = {"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
     tools = tools_anthropic(); system = (system or "") + note()
     for _ in range(MAX_STEPS):
-        resp = http("https://api.anthropic.com/v1/messages", headers,
+        resp = http(base, headers,
                     {"model": model, "max_tokens": 1024, "system": system,
                      "messages": msgs, "tools": tools})
         content = resp.get("content", [])
@@ -205,10 +209,22 @@ try:
         system = "\n\n".join(m.get("content", "") for m in msgs if m.get("role") == "system")
         conv = [m for m in msgs if m.get("role") != "system"]
         text = run_anthropic(key, model, system, conv)
+    elif provider == "bedrock":
+        system = "\n\n".join(m.get("content", "") for m in msgs if m.get("role") == "system")
+        conv = [m for m in msgs if m.get("role") != "system"]
+        region = (ENV.get("BEDROCK_AWS_REGION") or "us-east-1").strip().lower()
+        if (not region or len(region) > 32 or region.startswith("-") or region.endswith("-")
+                or any(not (c.islower() or c.isdigit() or c == "-") for c in region)):
+            region = "us-east-1"
+        base = "https://bedrock-mantle.%s.api.aws/anthropic/v1/messages" % region
+        text = run_anthropic(key, model, system, conv, base)
     else:
-        base = ("https://api.fireworks.ai/inference/v1/chat/completions"
-                if provider == "fireworks"
-                else "https://api.openai.com/v1/chat/completions")
+        if provider == "fireworks":
+            base = "https://api.fireworks.ai/inference/v1/chat/completions"
+        elif provider == "deepinfra":
+            base = "https://api.deepinfra.com/v1/openai/chat/completions"
+        else:
+            base = "https://api.openai.com/v1/chat/completions"
         text = run_openai(base, key, model, msgs)
 except urllib.error.HTTPError as e:
     err = "HTTP %s: %s" % (e.code, e.read().decode("utf-8", "ignore")[:200])

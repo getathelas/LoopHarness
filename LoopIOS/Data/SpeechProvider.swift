@@ -133,7 +133,8 @@ enum TTSProvider: String, CaseIterable {
                 ("Rory (irish male)",             "hmMWXCj9K7N5mCPcRkfC"),
                 ("Hannah (american female)",      "ZSNL4hPqCnqoMPaI4jGX"),
                 ("Zoe (african american female)", "M6ic45wruJGWAxLFEMNK"),
-                ("Agent (secret agent male)",     "ICIc5IiEgLitxGwyb7ZG")
+                ("Agent (secret agent male)",     "ICIc5IiEgLitxGwyb7ZG"),
+                ("Friendly Californian",           "c3VtJKuoGvBc0vUNQf8k")
             ]
         case .openAIMiniTTS:
             return ["alloy", "echo", "fable", "onyx", "nova",
@@ -148,8 +149,8 @@ enum TTSProvider: String, CaseIterable {
     var defaultVoiceId: String {
         switch self {
         case .aura2:              return "aura-2-thalia-en"
-        case .elevenLabsV3:       return "21m00Tcm4TlvDq8ikWAM"
-        case .elevenLabsFlashV25: return "ZSNL4hPqCnqoMPaI4jGX" // Hannah (american female)
+        case .elevenLabsV3:       return "c3VtJKuoGvBc0vUNQf8k"
+        case .elevenLabsFlashV25: return "c3VtJKuoGvBc0vUNQf8k"
         case .openAIMiniTTS:      return "shimmer"
         case .system:             return ""
         }

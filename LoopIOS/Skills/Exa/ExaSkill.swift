@@ -112,7 +112,7 @@ Workflow tips:
             }
             return "searching the web"
         case "exa_get_contents":
-            if let urls = call.arguments["urls"] as? [String], let first = urls.first,
+            if let first = ExaSkill.coerceStringList(call.arguments["urls"]).first,
                let host = URL(string: first)?.host {
                 return "reading \(host)"
             }
@@ -145,10 +145,18 @@ Workflow tips:
             let n = intArg(args["num_results"]) ?? 3
             exa_search(query: query, numResults: max(1, min(5, n)), completion: completion)
         case "exa_get_contents":
-            let urls = (args["urls"] as? [String]) ?? []
-            let ids = (args["ids"] as? [String]) ?? []
+            let rawURLs = ExaSkill.coerceStringList(args["urls"])
+            let urls = rawURLs.filter { ExaSkill.looksLikeHTTPURL($0) }
+            let ids = ExaSkill.coerceStringList(args["ids"])
             guard !urls.isEmpty || !ids.isEmpty else {
-                completion(missingArgs(for: "exa_get_contents", expected: "urls or ids"))
+                if !rawURLs.isEmpty {
+                    completion(MessageStruct(
+                        role: "assistant",
+                        content: "None of the values passed as `urls` to exa_get_contents look like http(s) URLs: \(rawURLs.joined(separator: ", ")). Pass exactly one absolute URL per call."
+                    ))
+                } else {
+                    completion(missingArgs(for: "exa_get_contents", expected: "urls or ids"))
+                }
                 return
             }
             exa_get_contents(urls: urls, ids: ids, completion: completion)
@@ -351,6 +359,53 @@ Workflow tips:
     }
 
     // MARK: - Helpers
+
+    /// Normalizes a tool argument that should be an array of strings.
+    ///
+    /// Models routinely hand us the wrong shape here: a bare string holding a
+    /// single value, or a string that itself contains a serialized JSON array
+    /// (the literal `"[\"https://example.com\"]"`). Both are accepted and
+    /// flattened; a proper array passes through unchanged. Entries are trimmed
+    /// and empty ones dropped.
+    static func coerceStringList(_ value: Any?) -> [String] {
+        switch value {
+        case let array as [Any]:
+            return cleaned(array.compactMap { $0 as? String })
+        case let string as String:
+            let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty { return [] }
+            if let data = trimmed.data(using: .utf8),
+               let parsed = try? JSONSerialization.jsonObject(with: data,
+                                                             options: [.fragmentsAllowed]) {
+                if let array = parsed as? [Any] {
+                    return cleaned(array.compactMap { $0 as? String })
+                }
+                if let inner = parsed as? String {
+                    return cleaned([inner])
+                }
+            }
+            return cleaned([trimmed])
+        default:
+            return []
+        }
+    }
+
+    /// True when the string parses as an absolute http(s) URL with a host.
+    static func looksLikeHTTPURL(_ string: String) -> Bool {
+        guard let url = URL(string: string),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              let host = url.host, !host.isEmpty else {
+            return false
+        }
+        return true
+    }
+
+    private static func cleaned(_ strings: [String]) -> [String] {
+        return strings
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
 
     private func intArg(_ value: Any?) -> Int? {
         if let i = value as? Int { return i }
