@@ -212,6 +212,10 @@ final class ConversationTitleService {
                 return .fireworks(key: key)
             }
             return nil
+        case .deepInfra:
+            // DeepSeek V4 Flash is a reasoning model, so the tiny 32-token
+            // title request is better handled by an existing cheap fallback.
+            return nil
         }
     }
 
