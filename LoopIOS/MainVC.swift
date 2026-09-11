@@ -5,6 +5,7 @@
 //  Created by Ash Bhat on 12/30/25.
 //
 import UIKit
+import SwiftUI
 
 class MainVC: MessagingVC {
 
@@ -44,8 +45,59 @@ class MainVC: MessagingVC {
     /// can tear it down cleanly.
     private var agentLargeVC: AgentLargeVC?
 
+    private var liveOrbController: UIHostingController<LiveOrbView>?
+
+    private func startLiveChat() {
+        guard liveOrbController == nil, !LiveSession.shared.isActive,
+              VoiceLoopCoordinator.shared.state == .idle else { return }
+        stopSpeech()
+        let controller = UIHostingController(rootView: LiveOrbView(session: .shared) { [weak self] in
+            self?.dismissLiveChat()
+        })
+        liveOrbController = controller
+        addChild(controller)
+        controller.view.backgroundColor = .clear
+        controller.view.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(controller.view)
+        NSLayoutConstraint.activate([
+            controller.view.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            controller.view.bottomAnchor.constraint(equalTo: messageBox.topAnchor, constant: -12),
+            controller.view.widthAnchor.constraint(equalToConstant: 310),
+            controller.view.topAnchor.constraint(greaterThanOrEqualTo: view.safeAreaLayoutGuide.topAnchor)
+        ])
+        controller.sizingOptions = .intrinsicContentSize
+        controller.didMove(toParent: self)
+        messageBox.setInputEnabled(false, placeholder: "Live chat is open")
+        messageBox.setAttachmentEnabled(false)
+        LiveSession.shared.start()
+    }
+
+    private func dismissLiveChat() {
+        LiveSession.shared.stop()
+        liveOrbController?.willMove(toParent: nil)
+        liveOrbController?.view.removeFromSuperview()
+        liveOrbController?.removeFromParent()
+        liveOrbController = nil
+        messageBox.setInputEnabled(true)
+        messageBox.setAttachmentEnabled(true)
+        if let conversation = SimpleConversationManager.shared.currentConversation {
+            loadConversation(conversation)
+        }
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        // Presenting another screen or backgrounding does not end a live call.
+        // Keep its controls attached so they are available when we return.
+        if liveOrbController != nil && (isBeingDismissed || isMovingFromParent) {
+            dismissLiveChat()
+        }
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
+
+        messageBox.onStartLive = { [weak self] in self?.startLiveChat() }
 
         setupAvatarTitleView()
         setupHeroAvatar()
