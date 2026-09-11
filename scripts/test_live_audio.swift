@@ -11,14 +11,20 @@ import AVFoundation
         }
         let audio = LiveAudio()
         var capturedBytes = 0
-        audio.onInput = { data, _ in capturedBytes += data.count }
+        var peakLevel: Float = 0
+        audio.onInput = { data, level in
+            capturedBytes += data.count
+            peakLevel = max(peakLevel, level)
+        }
         defer { audio.stop() }
         try audio.start()
         try audio.play(Data(repeating: 0, count: 4800))
-        RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+        RunLoop.main.run(until: Date().addingTimeInterval(3))
         precondition(audio.isRunning)
         precondition(capturedBytes > 0)
         print("PASS: voice-processing engine started, capture bytes arrived, silent playback queued")
+        print("Captured bytes: \(capturedBytes); peak level: \(peakLevel)")
+        if peakLevel == 0 { print("WARNING: capture contains only silence; speech capture is not verified") }
         } catch { print("FAIL: audio initialization \((error as NSError).code)"); exit(1) }
     }
 }

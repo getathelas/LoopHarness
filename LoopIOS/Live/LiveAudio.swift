@@ -26,8 +26,12 @@ final class LiveAudio {
         // That audio unit requires identical client-side capture/playback formats.
         _ = engine.outputNode
         try engine.inputNode.setVoiceProcessingEnabled(true)
-        let source = engine.inputNode.outputFormat(forBus: 0)
-        guard source.sampleRate > 0,
+        // VoiceProcessingIO can expose aggregate microphone/reference channels.
+        // Negotiate a mono client stream instead of downmixing that aggregate,
+        // which can deliver silent capture even though the engine starts.
+        let sampleRate = engine.inputNode.outputFormat(forBus: 0).sampleRate
+        guard sampleRate > 0,
+              let source = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1),
               let pcm = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 24000, channels: 1, interleaved: false),
               let converter = AVAudioConverter(from: source, to: pcm) else {
             throw NSError(domain: "LiveAudio", code: 1, userInfo: [NSLocalizedDescriptionKey: "No microphone is available."])

@@ -32,7 +32,7 @@ xcrun swiftc LoopIOS/Live/LiveAudio.swift LoopMac/MicrophoneManager.swift script
 /tmp/test-live-audio
 ```
 
-The Mac voice-processing engine requires identical client-side capture/playback formats. The player produces 24 kHz audio; the main mixer explicitly converts to the microphone format before feeding the output node. Removing that connection reproduced Core Audio `-10875`; restoring it passed microphone capture and silent playback initialization on the development Mac.
+The Mac voice-processing engine requires identical client-side capture/playback formats. Both I/O clients explicitly use mono at the hardware sample rate: accepting the aggregate channel layout caused all-zero capture on the development Mac, while mono negotiation produced a nonzero microphone signal. The player produces 24 kHz audio; the main mixer explicitly converts to the microphone format before feeding the output node. Removing that connection reproduced Core Audio `-10875`; restoring it passed microphone capture and silent playback initialization on the development Mac.
 
 Build `Loop_MacOS` and `Loop_iOS` (iOS Simulator) with Xcode. Before release, test with an OpenAI key that has GPT Live access on actual iPhone and Mac audio hardware:
 
