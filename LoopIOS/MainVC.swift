@@ -87,7 +87,11 @@ class MainVC: MessagingVC {
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        if liveOrbController != nil { dismissLiveChat() }
+        // Presenting another screen or backgrounding does not end a live call.
+        // Keep its controls attached so they are available when we return.
+        if liveOrbController != nil && (isBeingDismissed || isMovingFromParent) {
+            dismissLiveChat()
+        }
     }
 
     override func viewDidLoad() {

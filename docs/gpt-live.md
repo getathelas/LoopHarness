@@ -12,7 +12,7 @@ The native client uses the user's Keychain-managed API key, consistent with exis
 - Input/output transcript fragments retain timestamps in session memory. Only delegation events trigger thinking; incomplete transcript fragments never independently trigger tools.
 - Delegations are deduplicated and serialized. User corrections received during inference cause tool proposals to be reconsidered. Tools within a batch execute sequentially.
 - Closing stops microphone/playback immediately, invalidates queued agent continuations, and requests `session.close`, waiting at most 15 seconds for finalization. It cannot undo an already-dispatched external operation. Its eventual result updates the original conversation's task record without speaking or starting further work.
-- Conversation switches, iOS backgrounding/interruption/input-device loss, and macOS audio-engine loss end the session. Connection and queue failures require explicit retry; there is no automatic retry of uncertain tool actions.
+- Active calls continue when switching apps or locking the iPhone using the existing audio background mode. The orb and End control remain available when returning to Loop. Live tasks stay in the local call instead of being handed off to a background runner. Conversation switches, iOS audio interruptions/input-device loss, and macOS audio-engine loss end the session. Connection and queue failures require explicit retry; there is no automatic retry of uncertain tool actions.
 - Spoken transcript groupings and separate backend task records are saved to the originating conversation. API audio storage is disabled (`store: false`). No raw microphone recording is written by this feature.
 - Backend requests have a two-minute watchdog and a twelve-round limit. Audio send and playback queues are bounded.
 
@@ -41,6 +41,6 @@ Build `Loop_MacOS` and `Loop_iOS` with Xcode. Hardware testing must use a develo
 3. Talk, pause, and interrupt on speaker and Bluetooth/headset routes. Verify echo cancellation, understandable audio, independent captions, and mute.
 4. Ask a read-only tool question; check the selected model, tool result, spoken answer, and saved conversation.
 5. End or switch chats during thinking/tool execution. Confirm no late speech, no subsequent tool dispatch, and the result stays with the original conversation.
-6. Disconnect the network, unplug the microphone, and background the iPhone. Confirm capture and playback stop and retry starts a fresh session.
+6. Switch to another app and lock the iPhone during a connected call. Verify spoken replies and a read-only tool request continue, then return and use End to stop capture. Separately disconnect the network, unplug the microphone, or trigger an audio interruption; confirm the call stops and retry starts a fresh session.
 
 Builds and local protocol tests do not verify account/model access, live latency, audio-route behavior, or successful spoken tool use.

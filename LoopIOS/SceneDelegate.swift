@@ -99,6 +99,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {
+        // Live owns its ongoing audio and tool loop through background audio.
+        // Do not hand it off to another runner when the user switches apps.
+        guard !LiveSession.shared.isActive else { return }
         // Called as the scene transitions from the foreground to the background.
         //
         // Background handoff: if a local inference turn is in flight, hand it to a

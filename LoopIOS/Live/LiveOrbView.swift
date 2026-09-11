@@ -64,7 +64,7 @@ struct LiveOrbView: View {
                 .buttonStyle(.borderedProminent).tint(.red).clipShape(Circle())
                 .accessibilityLabel("End live chat")
             }
-            Text("AI voice · You can interrupt at any time")
+            Text("AI voice · Continues in the background")
                 .font(.caption2).foregroundStyle(.tertiary).multilineTextAlignment(.center)
         }
         .padding(22).frame(width: 310)

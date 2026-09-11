@@ -48,8 +48,10 @@ final class LiveSession: ObservableObject {
             self.stop()
         })
         #if os(iOS)
-        let notifications: [Notification.Name] = [UIApplication.didEnterBackgroundNotification,
-            AVAudioSession.interruptionNotification, AVAudioSession.routeChangeNotification]
+        // Active voice calls use the app's audio background mode. App switching
+        // and screen lock must not tear down capture, playback, or delegation.
+        let notifications: [Notification.Name] = [AVAudioSession.interruptionNotification,
+            AVAudioSession.routeChangeNotification]
         #elseif os(macOS)
         let notifications: [Notification.Name] = [NSApplication.willTerminateNotification,
             .AVAudioEngineConfigurationChange]
