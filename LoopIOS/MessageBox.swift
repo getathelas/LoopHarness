@@ -49,6 +49,10 @@ class MessageBox: UIView {
     let attachButton = UIButton()
     let keyboardButton = UIButton()
     let micButton = UIButton()
+    let liveButton = UIButton(type: .system)
+    var onStartLive: (() -> Void)?
+    private var liveButtonWidth: NSLayoutConstraint?
+
 
     // Attachment chip (visible only when `pendingAttachment != nil`). Sits
     // above the input container so the user can preview / remove the staged
@@ -153,6 +157,13 @@ class MessageBox: UIView {
         setup()
     }
     
+    @objc private func startLiveTapped() {
+        guard currentState == .normal, (textView.text ?? "").isEmpty,
+              pendingAttachment == nil, !LiveSession.shared.isActive else { return }
+        textView.resignFirstResponder()
+        onStartLive?()
+    }
+
     func setup() {
         
         containerView.translatesAutoresizingMaskIntoConstraints = false
@@ -168,6 +179,19 @@ class MessageBox: UIView {
         micButton.translatesAutoresizingMaskIntoConstraints = false
         self.addSubview(micButton)
         
+        liveButton.translatesAutoresizingMaskIntoConstraints = false
+        containerView.addSubview(liveButton)
+        liveButton.setImage(UIImage(systemName: "waveform"), for: .normal)
+        liveButton.accessibilityLabel = "Start live chat"
+        liveButton.accessibilityIdentifier = "startLiveChat"
+        liveButton.addTarget(self, action: #selector(startLiveTapped), for: .touchUpInside)
+        let liveWidth = liveButton.widthAnchor.constraint(equalToConstant: 44)
+        liveButtonWidth = liveWidth
+        NSLayoutConstraint.activate([
+            liveButton.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -4),
+            liveButton.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
+            liveButton.heightAnchor.constraint(equalToConstant: 44), liveWidth
+        ])
         let views = [textView, keyboardButton, emptyLabel]
         for view in views {
             view.translatesAutoresizingMaskIntoConstraints = false
@@ -260,7 +284,7 @@ class MessageBox: UIView {
             // Text view — between the in-field files button and the field's
             // trailing edge. Insets tuned so the empty field is ~emptyFieldHeight.
             textView.leadingAnchor.constraint(equalTo: attachButton.trailingAnchor, constant: 8),
-            textView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -14),
+            textView.trailingAnchor.constraint(equalTo: liveButton.leadingAnchor, constant: -4),
             textView.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 8),
             textView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -8),
             textView.heightAnchor.constraint(greaterThanOrEqualToConstant: 20),
@@ -1260,6 +1284,9 @@ extension MessageBox {
     fileprivate func refreshInputButtons() {
         updateLeftButton()
         updateRightButton()
+        let showLive = (textView.text ?? "").isEmpty && pendingAttachment == nil && currentState == .normal
+        liveButton.isHidden = !showLive
+        liveButtonWidth?.constant = showLive ? 44 : 6
     }
 
     /// True when the left (files) button is currently acting as a

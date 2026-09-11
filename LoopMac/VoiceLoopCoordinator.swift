@@ -281,6 +281,7 @@ The current date and time is \(now).
     // MARK: - Recording lifecycle (called by HotKeyMonitor)
 
     func startRecording() {
+        guard !LiveSession.shared.isActive else { return }
         guard state == .idle || state == .speaking else { return }
         // Stop any in-progress speech playback.
         speechPlayer.stop()
