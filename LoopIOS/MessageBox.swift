@@ -182,6 +182,7 @@ class MessageBox: UIView {
         liveButton.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(liveButton)
         liveButton.setImage(UIImage(systemName: "waveform"), for: .normal)
+        liveButton.tintColor = .label
         liveButton.accessibilityLabel = "Start live chat"
         liveButton.accessibilityIdentifier = "startLiveChat"
         liveButton.addTarget(self, action: #selector(startLiveTapped), for: .touchUpInside)

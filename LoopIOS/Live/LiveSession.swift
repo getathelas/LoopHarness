@@ -264,6 +264,9 @@ final class LiveSession: ObservableObject {
 
     private func runNextDelegation() {
         guard state == .connected, workID == nil, let delegation = delegations.first else { return }
+        // A new delegated request is a new turn, not another retry of an old
+        // tool batch. Keep loop protection active within this request.
+        ToolCallGuard.shared.resetForNewTurn()
         let work = UUID(); workID = work; thinking = true
         status = "LoopHarness is thinking…"
         workTimeout = Task { @MainActor [weak self] in
@@ -278,6 +281,12 @@ final class LiveSession: ObservableObject {
     private func reason(delegation: String, work: UUID, remaining: Int) {
         guard state == .connected, workID == work else { return }
         guard remaining > 0 else { complete("The task reached its step limit. Please review the results before continuing.", delegation: delegation, work: work); return }
+        let selected = ModelSelectionStore.current
+        if let key = selected.requiredKey,
+           KeyStore.shared.value(for: key)?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+            complete("\(selected.stampedMessageModel) cannot run because its \(key.displayName) key is unavailable. Open Settings → Keys to reconnect it, or select another thinking model in Settings → Model. No tool was run.", delegation: delegation, work: work)
+            return
+        }
         addLatestContext()
         let snapshot = fragments.count
         let instruction = MessageStruct(role: "system", content: "You are LoopHarness, the reasoning and tools layer for a live voice conversation. Follow your existing instructions and tool permissions. Transcript fragments can overlap, contain mistakes, or be corrected later. Use the latest intent, ask for missing details, and do not repeat completed actions. Return concise verified facts and next steps for speech. Do not include secrets. Keep the answer under 100 words.")
@@ -285,7 +294,10 @@ final class LiveSession: ObservableObject {
             DispatchQueue.main.async {
                 guard let self = self, self.state == .connected, self.workID == work else { return }
                 guard let response = response, error == nil else {
-                    self.complete("LoopHarness could not complete this request. Please check the selected model and try again.", delegation: delegation, work: work); return
+                    let code = (error as NSError?)?.code ?? 0
+                    let message = "\(selected.stampedMessageModel) failed before returning a result (error \(code)). Check its connection and access in Settings → Keys and Settings → Model."
+                    AgentActivityLog.shared.log(.status, message)
+                    self.complete(message, delegation: delegation, work: work); return
                 }
                 // Reconsider tool calls if the user corrected the request during inference.
                 if !response.functions.isEmpty, self.fragments.dropFirst(snapshot).contains(where: { $0.role == "user" }) {
