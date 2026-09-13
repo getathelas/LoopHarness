@@ -129,17 +129,27 @@ class MainVC: MessagingVC {
     }
 
     private func renderLiveRows(_ rows: [MessageStruct], follow: Bool = true) {
-        guard liveOrbController != nil, !rows.isEmpty, !isInspectingLiveActivity,
+        guard liveOrbController != nil, !rows.isEmpty,
               LiveSession.shared.conversationID == SimpleConversationManager.shared.currentConversation?.id else { return }
         let offset = tableView.contentOffset
+        // Keep the visible message anchored while inspecting, but continue
+        // accepting results: freezing the data also hid in-flight images.
+        let inspecting = isInspectingLiveActivity
+        let anchorIndex = tableView.indexPathsForVisibleRows?.sorted().first
+        let anchorID = anchorIndex.flatMap { $0.row < visible_messages.count ? visible_messages[$0.row].id : nil }
+        let anchorY = anchorIndex.map { tableView.rectForRow(at: $0).minY - offset.y }
         let nearBottom = offset.y + tableView.bounds.height >= tableView.contentSize.height - 120
         UIView.performWithoutAnimation {
             messages = liveBaseMessages + rows
             tableView.reloadData()
             refreshAvatarVisibility(animated: false)
             tableView.layoutIfNeeded()
-            if follow && nearBottom && !tableView.isDragging && !tableView.isDecelerating && !visible_messages.isEmpty {
+            if follow && !inspecting && nearBottom && !tableView.isDragging && !tableView.isDecelerating && !visible_messages.isEmpty {
                 tableView.scrollToRow(at: IndexPath(row: visible_messages.count - 1, section: 0), at: .bottom, animated: false)
+            } else if let anchorID, let anchorY,
+                      let row = visible_messages.firstIndex(where: { $0.id == anchorID }) {
+                let y = tableView.rectForRow(at: IndexPath(row: row, section: 0)).minY - anchorY
+                tableView.setContentOffset(CGPoint(x: offset.x, y: y), animated: false)
             } else { tableView.setContentOffset(offset, animated: false) }
         }
     }
