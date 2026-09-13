@@ -94,18 +94,22 @@ class MainVC: MessagingVC {
         if let window = view.window {
             let border = UIHostingController(rootView: LiveSpeakingBorder(session: .shared))
             liveBorderController = border
-            addChild(border)
+            // The controller and its view must share the same hierarchy.
+            // Attaching a chat child directly to UIWindow raises UIKit's
+            // UIViewControllerHierarchyInconsistency when the call opens.
+            let host = window.rootViewController ?? self
+            host.addChild(border)
             border.view.backgroundColor = .clear
             border.view.isUserInteractionEnabled = false
             border.view.translatesAutoresizingMaskIntoConstraints = false
-            window.addSubview(border.view)
+            host.view.addSubview(border.view)
             NSLayoutConstraint.activate([
-                border.view.leadingAnchor.constraint(equalTo: window.leadingAnchor),
-                border.view.trailingAnchor.constraint(equalTo: window.trailingAnchor),
-                border.view.topAnchor.constraint(equalTo: window.topAnchor),
-                border.view.bottomAnchor.constraint(equalTo: window.bottomAnchor)
+                border.view.leadingAnchor.constraint(equalTo: host.view.leadingAnchor),
+                border.view.trailingAnchor.constraint(equalTo: host.view.trailingAnchor),
+                border.view.topAnchor.constraint(equalTo: host.view.topAnchor),
+                border.view.bottomAnchor.constraint(equalTo: host.view.bottomAnchor)
             ])
-            border.didMove(toParent: self)
+            border.didMove(toParent: host)
         }
         LiveSession.shared.start()
         liveRowsObservation = LiveSession.shared.$liveMessages
