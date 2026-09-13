@@ -120,19 +120,28 @@ class MainVC: MessagingVC {
                 guard let self, self.liveOrbController != nil,
                       LiveSession.shared.conversationID == SimpleConversationManager.shared.currentConversation?.id,
                       !rows.isEmpty else { return }
-                let nearBottom = self.tableView.contentOffset.y + self.tableView.bounds.height
-                    >= self.tableView.contentSize.height - 120
-                self.messages = self.liveBaseMessages + rows
-                self.tableView.reloadData()
-                self.refreshAvatarVisibility(animated: false)
-                if nearBottom && !self.tableView.isDragging && !self.tableView.isDecelerating {
-                    self.tableView.layoutIfNeeded()
-                    let count = self.visible_messages.count
-                    if count > 0 {
-                        self.tableView.scrollToRow(at: IndexPath(row: count - 1, section: 0), at: .bottom, animated: false)
-                    }
-                }
+                self.renderLiveRows(rows)
             }
+    }
+
+    override func liveInspectionDidChange() {
+        if !isInspectingLiveActivity { renderLiveRows(LiveSession.shared.liveMessages, follow: false) }
+    }
+
+    private func renderLiveRows(_ rows: [MessageStruct], follow: Bool = true) {
+        guard liveOrbController != nil, !rows.isEmpty, !isInspectingLiveActivity,
+              LiveSession.shared.conversationID == SimpleConversationManager.shared.currentConversation?.id else { return }
+        let offset = tableView.contentOffset
+        let nearBottom = offset.y + tableView.bounds.height >= tableView.contentSize.height - 120
+        UIView.performWithoutAnimation {
+            messages = liveBaseMessages + rows
+            tableView.reloadData()
+            refreshAvatarVisibility(animated: false)
+            tableView.layoutIfNeeded()
+            if follow && nearBottom && !tableView.isDragging && !tableView.isDecelerating && !visible_messages.isEmpty {
+                tableView.scrollToRow(at: IndexPath(row: visible_messages.count - 1, section: 0), at: .bottom, animated: false)
+            } else { tableView.setContentOffset(offset, animated: false) }
+        }
     }
 
     private func dismissLiveChat() {

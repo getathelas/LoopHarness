@@ -380,6 +380,33 @@ When the user asks how you work, what you can do, or how you're built, read `ABO
     /// Toggled by tapping the disclosure header; consulted in `cellForRowAt`.
     private var expandedToolMessageIds = Set<String>()
     private var liveActivityExpansion: [String: Bool] = [:]
+    private var liveToolExpansion: [String: Set<String>] = [:]
+    var isInspectingLiveActivity: Bool {
+        visible_messages.contains { message in
+            liveActivityExpansion[message.id] == true || !(liveToolExpansion[message.id] ?? []).isEmpty
+        }
+    }
+    func liveInspectionDidChange() {}
+
+    private func toggleLiveDetails(messageID: String, expanded: Bool, toolID: String? = nil) {
+        let offset = tableView.contentOffset
+        if let toolID {
+            var tools = liveToolExpansion[messageID] ?? []
+            if !tools.insert(toolID).inserted { tools.remove(toolID) }
+            liveToolExpansion[messageID] = tools
+            // Explicit inspection must survive the model marking this card spoken.
+            liveActivityExpansion[messageID] = true
+        } else {
+            liveActivityExpansion[messageID] = !expanded
+            if expanded { liveToolExpansion[messageID] = [] }
+        }
+        UIView.performWithoutAnimation {
+            liveInspectionDidChange()
+            tableView.reloadData()
+            tableView.layoutIfNeeded()
+            tableView.setContentOffset(offset, animated: false)
+        }
+    }
 
     var visible_messages: [MessageStruct] {
         let filtered = self.messages.filter({
@@ -3471,11 +3498,11 @@ extension MessagingVC: UITableViewDelegate, UITableViewDataSource {
                 let expanded = liveActivityExpansion[message.id] ?? activity.defaultExpanded
                 cell.backgroundColor = .clear; cell.selectionStyle = .none
                 cell.contentConfiguration = UIHostingConfiguration {
-                    LiveReasoningCard(activity: activity, model: message.model, expanded: expanded) { [weak self] in
-                        guard let self else { return }
-                        self.liveActivityExpansion[message.id] = !expanded
-                        self.tableView.reloadData()
-                    }
+                    LiveReasoningCard(activity: activity, model: message.model, expanded: expanded, toggle: { [weak self] in
+                        self?.toggleLiveDetails(messageID: message.id, expanded: expanded)
+                    }, expandedTools: self.liveToolExpansion[message.id] ?? [], toggleTool: { [weak self] toolID in
+                        self?.toggleLiveDetails(messageID: message.id, expanded: expanded, toolID: toolID)
+                    })
                 }.margins(.horizontal, 16).margins(.vertical, 8)
                 return cell
             }

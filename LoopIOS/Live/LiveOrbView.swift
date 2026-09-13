@@ -172,6 +172,8 @@ struct LiveReasoningCard: View {
     let model: String
     let expanded: Bool
     let toggle: () -> Void
+    var expandedTools: Set<String> = []
+    var toggleTool: (String) -> Void = { _ in }
 
     private var displayModel: String { model.components(separatedBy: " via ").first ?? model }
     var body: some View {
@@ -212,16 +214,24 @@ struct LiveReasoningCard: View {
                         if let end = tool.finishedAt {
                             Text(String(format: "%.1fs", end.timeIntervalSince(tool.startedAt))).font(.caption2).foregroundStyle(.secondary)
                         }
-                        DisclosureGroup("Inputs & result") {
+                        HStack {
+                            Image(systemName: expandedTools.contains(tool.id) ? "chevron.down" : "chevron.right")
+                            Text("Inputs & result")
+                            Spacer()
+                        }.font(.caption).foregroundStyle(.secondary)
+                        if expandedTools.contains(tool.id) {
                         Text("Inputs").font(.caption.weight(.semibold))
                         Text(tool.input).font(.caption.monospaced()).textSelection(.enabled)
                         if !tool.output.isEmpty {
                             Text("Result").font(.caption.weight(.semibold))
                             Text(tool.output).font(.caption).textSelection(.enabled)
                         }
-                        }.font(.caption).tint(.secondary)
+                        }
                     }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
                         .background(.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
+                        .contentShape(Rectangle())
+                        .onTapGesture { toggleTool(tool.id) }
+                        .accessibilityAction(named: expandedTools.contains(tool.id) ? "Close tool details" : "Open tool details") { toggleTool(tool.id) }
                 }
                 if !activity.summary.isEmpty {
                     Text(activity.summary).font(.subheadline).textSelection(.enabled)
@@ -231,6 +241,9 @@ struct LiveReasoningCard: View {
         .padding(14).frame(maxWidth: .infinity, alignment: .leading)
         .background(.orange.opacity(0.06), in: RoundedRectangle(cornerRadius: 18))
         .overlay(RoundedRectangle(cornerRadius: 18).stroke(.orange.opacity(0.18), lineWidth: 1))
+        .contentShape(Rectangle())
+        .onTapGesture(perform: toggle)
+        .transaction { $0.animation = nil }
     }
 }
 

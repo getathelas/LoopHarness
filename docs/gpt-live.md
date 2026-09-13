@@ -70,3 +70,5 @@ Activity metadata and model attribution are encoded in the actual NDJSON message
 ### Images in Live cards
 
 Image-search results appear as thumbnails in their reasoning and tools card, with links to the source pages. Tap a thumbnail to enlarge it. Generated images show a loading placeholder, then update the same card with the image or a failure message. Images remain visible when tool details collapse and are saved with the conversation. Generation that finishes after ending a call updates its original conversation; ordinary text-chat image delivery is unchanged.
+
+In Live mode, tap the reasoning card area to expand/collapse it, or tap a tool's area to toggle its inputs and result. Explicit expansion is retained across updates. While a card is manually open, the chat display holds its current contents and scroll position so streaming cannot interrupt inspection; audio and tool execution continue. Closing the card applies the latest contents without jumping to the bottom. Expansion transitions do not animate.
