@@ -308,7 +308,7 @@ final class LiveSession: ObservableObject {
         }
         addLatestContext()
         let snapshot = fragments.count
-        let instruction = MessageStruct(role: "system", content: "You are LoopHarness, the reasoning and tools layer for a live voice conversation. Follow your existing instructions and tool permissions. Transcript fragments can overlap, contain mistakes, or be corrected later. Use the latest intent, ask for missing details, and do not repeat completed actions. Return concise verified facts and next steps for speech. Do not include secrets. Keep the answer under 100 words.")
+        let instruction = MessageStruct(role: "system", content: "You are LoopHarness, the reasoning and tools layer for a live voice conversation. Follow your existing instructions and tool permissions. Transcript fragments can overlap, contain mistakes, or be corrected later. Use the latest intent, ask for missing details, and do not repeat completed actions. Return concise verified facts and next steps for speech. Do not include secrets. When asked to show an existing image, call share_file with its workspace path in this turn. Do not substitute a previous tool log or a textual claim that an image is shown. Keep the answer under 100 words.")
         Cloud.connection.chat(messages: [instruction] + history.filter { $0.role != "system" }) { [weak self] response, error in
             DispatchQueue.main.async {
                 guard let self = self, self.state == .connected, self.workID == work else { return }
@@ -374,6 +374,12 @@ final class LiveSession: ObservableObject {
                         LiveImageResult(id: gallery.id + "-" + String(offset), title: item.title ?? gallery.query,
                             url: item.originalURL, thumbnailURL: item.thumbnailURL, sourceURL: item.sourceLink, state: "ready")
                     }
+                }
+                if let file = paired.fileAttachment, file.kind == .image {
+                    record.liveActivity?.tools[tool].images = [LiveImageResult(
+                        id: file.id, title: file.fileName, url: file.resolvedFileURL.absoluteString,
+                        state: file.status == .ready ? "ready" : file.status == .failed ? "failed" : "generating",
+                        failureReason: file.failureReason)]
                 }
                 if record.liveActivity?.tools[tool].images?.contains(where: { $0.state == "generating" }) == true {
                     record.liveActivity?.tools[tool].state = "generating image"

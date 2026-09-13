@@ -4,6 +4,7 @@ import AVFoundation
 
 struct FunctionCallStruct { var name: String; var arguments: [String: Any] = [:]; var liveRequestID: String? = nil; var callId: String?; var conversationId: String? }
 struct MessageStruct {
+ var fileAttachment: FileAttachment? = nil
  var imageGalleryAttachment: ImageGalleryAttachment? = nil
  var liveActivity: LiveActivityRecord? = nil
  var id = UUID().uuidString
@@ -38,8 +39,9 @@ final class Cloud {
 }
 final class SkillDispatcher {
  static let shared = SkillDispatcher()
+ var file: FileAttachment?
  var gallery: ImageGalleryAttachment?
- func dispatch(_ c: FunctionCallStruct, completion: @escaping (MessageStruct) -> Void) { completion(MessageStruct(imageGalleryAttachment: gallery, role:"function",content:"test result")) }
+ func dispatch(_ c: FunctionCallStruct, completion: @escaping (MessageStruct) -> Void) { completion(MessageStruct(fileAttachment: file, imageGalleryAttachment: gallery, role:"function",content:"test result")) }
 }
 
 final class ToolCallGuard {
@@ -209,5 +211,26 @@ extension LiveSession {
   precondition(restored.tools[0].images?.first?.thumbnailURL == "https://example.com/thumb.png")
   SkillDispatcher.shared.gallery = nil
   print("PASS: image search thumbnails, full images and source links survive serialization")
+  let share = LiveSession(); share.conversation = SimpleConversation(); share.state = .connected
+  let shareWork = UUID(); share.workID = shareWork
+  row.id = shareWork.uuidString; share.liveMessages = [row]
+  SkillDispatcher.shared.file = FileAttachment()
+  share.execute([FunctionCallStruct(name: "share_file", callId: "share")], index: 0, delegation: "opaque", work: shareWork, remaining: 2, transcriptCount: 0)
+  RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+  precondition(share.liveMessages[0].liveActivity?.tools[0].images?.first?.url == "file:///tmp/example.png")
+  precondition(share.liveMessages[0].liveActivity?.tools[0].images?.first?.state == "ready")
+  SkillDispatcher.shared.file = nil
+  print("PASS: share_file image attachments are rendered as Live image results")
  }
+}
+
+struct FileAttachment {
+ enum Kind { case image, pdf }
+ enum Status { case ready, pending, failed }
+ var id = "shared-image"
+ var fileName = "example.png"
+ var kind: Kind = .image
+ var status: Status = .ready
+ var failureReason: String? = nil
+ var resolvedFileURL = URL(fileURLWithPath: "/tmp/example.png")
 }
