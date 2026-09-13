@@ -134,6 +134,7 @@ class MainVC: MessagingVC {
         let offset = tableView.contentOffset
         // Keep the visible message anchored while inspecting, but continue
         // accepting results: freezing the data also hid in-flight images.
+        let previousRows = visible_messages
         let inspecting = isInspectingLiveActivity
         let anchorIndex = tableView.indexPathsForVisibleRows?.sorted().first
         let anchorID = anchorIndex.flatMap { $0.row < visible_messages.count ? visible_messages[$0.row].id : nil }
@@ -141,7 +142,17 @@ class MainVC: MessagingVC {
         let nearBottom = offset.y + tableView.bounds.height >= tableView.contentSize.height - 120
         UIView.performWithoutAnimation {
             messages = liveBaseMessages + rows
-            tableView.reloadData()
+            let currentRows = visible_messages
+            if previousRows.map(\.id) == currentRows.map(\.id),
+               tableView.numberOfRows(inSection: 0) >= currentRows.count {
+                // Speech deltas must not recreate unrelated image cards.
+                let changed = currentRows.indices.filter {
+                    previousRows[$0].content != currentRows[$0].content ||
+                    previousRows[$0].model != currentRows[$0].model ||
+                    previousRows[$0].liveActivity != currentRows[$0].liveActivity
+                }.map { IndexPath(row: $0, section: 0) }
+                if !changed.isEmpty { tableView.reconfigureRows(at: changed) }
+            } else { tableView.reloadData() }
             refreshAvatarVisibility(animated: false)
             tableView.layoutIfNeeded()
             if follow && !inspecting && nearBottom && !tableView.isDragging && !tableView.isDecelerating && !visible_messages.isEmpty {

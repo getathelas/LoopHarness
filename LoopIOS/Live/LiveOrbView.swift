@@ -285,18 +285,42 @@ struct LiveImageTile: View {
     }
 }
 
+@MainActor
 private struct LiveImageAsset: View {
-    let url: String
-    @State private var image: Image?
-    @State private var failed = false
+    @ObservedObject private var asset: LiveImageLoader
+    init(url: String) { asset = LiveImageLoader.shared(url: url) }
     var body: some View {
         Group {
-            if let image { image.resizable().scaledToFit() }
-            else if failed { Label("Image unavailable", systemImage: "photo").font(.caption) }
+            if let image = asset.image { image.resizable().scaledToFit() }
+            else if asset.failed { Label("Image unavailable", systemImage: "photo").font(.caption) }
             else { ProgressView() }
         }
-        .task(id: url) {
-            image = nil; failed = false
+    }
+}
+
+/// Loading belongs to the resource, not the lifetime of a streaming table cell.
+/// Recreated cards immediately reuse the decoded image (or in-flight request).
+@MainActor
+private final class LiveImageLoader: ObservableObject {
+    private static let cache: NSCache<NSString, LiveImageLoader> = {
+        let cache = NSCache<NSString, LiveImageLoader>()
+        cache.countLimit = 32
+        cache.totalCostLimit = 128 * 1024 * 1024
+        return cache
+    }()
+    @Published private(set) var image: Image?
+    @Published private(set) var failed = false
+
+    static func shared(url: String) -> LiveImageLoader {
+        if let cached = cache.object(forKey: url as NSString) { return cached }
+        let loader = LiveImageLoader()
+        cache.setObject(loader, forKey: url as NSString)
+        loader.load(url)
+        return loader
+    }
+
+    private func load(_ url: String) {
+        Task {
             guard let resource = URL(string: url), resource.isFileURL || ["http", "https"].contains(resource.scheme ?? "") else { failed = true; return }
             do {
                 let data: Data
@@ -306,15 +330,17 @@ private struct LiveImageAsset: View {
                     (data, response) = try await URLSession.shared.data(from: resource)
                     guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { failed = true; return }
                 }
-                guard !Task.isCancelled else { return }
                 #if canImport(UIKit)
                 guard let bitmap = UIImage(data: data) else { failed = true; return }
                 image = Image(uiImage: bitmap)
+                let cost = Int(bitmap.size.width * bitmap.scale * bitmap.size.height * bitmap.scale * 4)
                 #else
                 guard let bitmap = NSImage(data: data) else { failed = true; return }
                 image = Image(nsImage: bitmap)
+                let cost = Int(bitmap.size.width * bitmap.size.height * 4)
                 #endif
-            } catch { if !Task.isCancelled { failed = true } }
+                Self.cache.setObject(self, forKey: url as NSString, cost: cost)
+            } catch { failed = true }
         }
     }
 }

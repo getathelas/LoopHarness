@@ -51,7 +51,7 @@ struct LiveTranscriptFragment: Codable, Identifiable {
     let endMS: Double
 }
 
-struct LiveToolRecord: Codable, Identifiable {
+struct LiveToolRecord: Codable, Identifiable, Equatable {
     var id: String
     var name: String
     var input: String
@@ -73,7 +73,7 @@ struct LiveToolRecord: Codable, Identifiable {
     }
 }
 
-struct LiveActivityRecord: Codable {
+struct LiveActivityRecord: Codable, Equatable {
     var state: String = "thinking"
     var summary: String = ""
     var tools: [LiveToolRecord] = []
@@ -87,7 +87,7 @@ struct LiveActivityRecord: Codable {
     }
 }
 
-struct LiveImageResult: Codable, Identifiable {
+struct LiveImageResult: Codable, Identifiable, Equatable {
     var id: String
     var title: String
     var url: String?
