@@ -6,6 +6,7 @@
 //
 import UIKit
 import SwiftUI
+import Combine
 
 class MainVC: MessagingVC {
 
@@ -45,44 +46,108 @@ class MainVC: MessagingVC {
     /// can tear it down cleanly.
     private var agentLargeVC: AgentLargeVC?
 
-    private var liveOrbController: UIHostingController<LiveOrbView>?
+    private var liveOrbController: UIHostingController<LiveCompactOrb>?
+    private var liveControlsController: UIHostingController<LiveCallControls>?
+    private var liveBorderController: UIHostingController<LiveSpeakingBorder>?
+    private var liveRowsObservation: AnyCancellable?
+    private var previousTitleView: UIView?
+    private var liveBaseMessages: [MessageStruct] = []
 
     private func startLiveChat() {
         guard liveOrbController == nil, !LiveSession.shared.isActive,
               VoiceLoopCoordinator.shared.state == .idle else { return }
         stopSpeech()
-        let controller = UIHostingController(rootView: LiveOrbView(session: .shared) { [weak self] in
+        view.endEditing(true)
+        liveBaseMessages = messages
+        previousTitleView = navigationItem.titleView
+        let orb = UIHostingController(rootView: LiveCompactOrb(session: .shared))
+        liveOrbController = orb
+        addChild(orb)
+        orb.view.backgroundColor = .clear
+        orb.view.frame = CGRect(x: 0, y: 0, width: 44, height: 44)
+        navigationItem.titleView = orb.view
+        orb.didMove(toParent: self)
+
+        let controls = UIHostingController(rootView: LiveCallControls(session: .shared, onRetry: { [weak self] in
+            guard let self else { return }
+            self.liveBaseMessages = self.messages
+            LiveSession.shared.start()
+        }, onClose: { [weak self] in
             self?.dismissLiveChat()
-        })
-        liveOrbController = controller
-        addChild(controller)
-        controller.view.backgroundColor = .clear
-        controller.view.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(controller.view)
+        }))
+        liveControlsController = controls
+        addChild(controls)
+        controls.view.backgroundColor = .clear
+        controls.view.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(controls.view)
         NSLayoutConstraint.activate([
-            controller.view.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            controller.view.bottomAnchor.constraint(equalTo: messageBox.topAnchor, constant: -12),
-            controller.view.widthAnchor.constraint(equalToConstant: 310),
-            controller.view.topAnchor.constraint(greaterThanOrEqualTo: view.safeAreaLayoutGuide.topAnchor)
+            controls.view.leadingAnchor.constraint(equalTo: messageBox.leadingAnchor, constant: 15),
+            controls.view.trailingAnchor.constraint(equalTo: messageBox.trailingAnchor, constant: -15),
+            controls.view.topAnchor.constraint(equalTo: messageBox.topAnchor),
+            controls.view.bottomAnchor.constraint(equalTo: messageBox.safeAreaLayoutGuide.bottomAnchor)
         ])
-        controller.sizingOptions = .intrinsicContentSize
-        controller.didMove(toParent: self)
-        messageBox.setInputEnabled(false, placeholder: "Live chat is open")
+        controls.didMove(toParent: self)
+        messageBox.alpha = 0
+        messageBox.setInputEnabled(false)
         messageBox.setAttachmentEnabled(false)
+
+        if let window = view.window {
+            let border = UIHostingController(rootView: LiveSpeakingBorder(session: .shared))
+            liveBorderController = border
+            addChild(border)
+            border.view.backgroundColor = .clear
+            border.view.isUserInteractionEnabled = false
+            border.view.translatesAutoresizingMaskIntoConstraints = false
+            window.addSubview(border.view)
+            NSLayoutConstraint.activate([
+                border.view.leadingAnchor.constraint(equalTo: window.leadingAnchor),
+                border.view.trailingAnchor.constraint(equalTo: window.trailingAnchor),
+                border.view.topAnchor.constraint(equalTo: window.topAnchor),
+                border.view.bottomAnchor.constraint(equalTo: window.bottomAnchor)
+            ])
+            border.didMove(toParent: self)
+        }
         LiveSession.shared.start()
+        liveRowsObservation = LiveSession.shared.$liveMessages
+            .throttle(for: .milliseconds(150), scheduler: RunLoop.main, latest: true)
+            .sink { [weak self] rows in
+                guard let self, self.liveOrbController != nil,
+                      LiveSession.shared.conversationID == SimpleConversationManager.shared.currentConversation?.id,
+                      !rows.isEmpty else { return }
+                let nearBottom = self.tableView.contentOffset.y + self.tableView.bounds.height
+                    >= self.tableView.contentSize.height - 120
+                self.messages = self.liveBaseMessages + rows
+                self.tableView.reloadData()
+                self.refreshAvatarVisibility(animated: false)
+                if nearBottom && !self.tableView.isDragging && !self.tableView.isDecelerating {
+                    self.tableView.layoutIfNeeded()
+                    let count = self.visible_messages.count
+                    if count > 0 {
+                        self.tableView.scrollToRow(at: IndexPath(row: count - 1, section: 0), at: .bottom, animated: false)
+                    }
+                }
+            }
     }
 
     private func dismissLiveChat() {
         LiveSession.shared.stop()
-        liveOrbController?.willMove(toParent: nil)
-        liveOrbController?.view.removeFromSuperview()
-        liveOrbController?.removeFromParent()
-        liveOrbController = nil
+        liveRowsObservation = nil
+        let controllers: [UIViewController?] = [liveOrbController, liveControlsController, liveBorderController]
+        for controller in controllers.compactMap({ $0 }) {
+            controller.willMove(toParent: nil)
+            controller.view.removeFromSuperview()
+            controller.removeFromParent()
+        }
+        liveOrbController = nil; liveControlsController = nil; liveBorderController = nil
+        navigationItem.titleView = previousTitleView
+        previousTitleView = nil; liveBaseMessages = []
+        messageBox.alpha = 1
         messageBox.setInputEnabled(true)
         messageBox.setAttachmentEnabled(true)
         if let conversation = SimpleConversationManager.shared.currentConversation {
             loadConversation(conversation)
         }
+        refreshAvatarVisibility(animated: false)
     }
 
     override func viewWillDisappear(_ animated: Bool) {

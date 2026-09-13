@@ -1,6 +1,6 @@
 # GPT Live voice in LoopHarness
 
-Start live chat with the waveform button **inside an empty composer** on iPhone or Mac. A floating orb shows microphone/playback activity, captions, and LoopHarness tool progress. Mute blocks microphone samples locally while keeping a silent stream running. End closes the call and restores the composer. Starting requires the user's OpenAI key in Settings → Keys and microphone permission.
+Start live chat with the waveform button **inside an empty composer** on iPhone or Mac. On iPhone, the live orb replaces the navigation avatar, a blue screen outline responds to spoken output, and compact mute/end controls replace the composer. Speech and tool activity appear progressively in the conversation; ending the call saves the same stable rows without duplication. Updates are throttled and preserve the scroll position while reading older messages. Mac retains its floating orb. Reduce Motion disables the animated sweep and orb movement. Mute blocks microphone samples locally while keeping a silent stream running. End closes the call and restores the composer. Starting requires the user's OpenAI key in Settings → Keys and microphone permission.
 
 GPT Live 1 handles voice. Client delegation calls the existing `Cloud` → `AgentHarness` path using the selected thinking model, harness documents, tool schemas, and `SkillDispatcher` (including its duplicate-call guard and existing permission/confirmation behavior). The live model cannot execute tools directly. This follows OpenAI's [client delegation guide](https://developers.openai.com/api/docs/guides/live-delegation).
 
@@ -44,3 +44,15 @@ Build `Loop_MacOS` and `Loop_iOS` with Xcode. Hardware testing must use a develo
 6. Switch to another app and lock the iPhone during a connected call. Verify spoken replies and a read-only tool request continue, then return and use End to stop capture. Separately disconnect the network, unplug the microphone, or trigger an audio interruption; confirm the call stops and retry starts a fresh session.
 
 Builds and local protocol tests do not verify account/model access, live latency, audio-route behavior, or successful spoken tool use.
+
+### Live conversation regression checks
+
+The test concatenates an extension after the real session implementation to exercise private event handling with local fake audio, storage, model, and tool dependencies. No network requests or microphone capture are performed.
+
+```sh
+cat LoopIOS/Live/LiveSession.swift scripts/test_live_session.swift > /tmp/live-session-tests.swift
+xcrun swiftc LoopIOS/Live/LiveProtocol.swift /tmp/live-session-tests.swift -o /tmp/live-session-tests
+/tmp/live-session-tests
+```
+
+Checks progressive transcript grouping, stable row IDs, immediate tool activity, replacement with completed results, and exactly-once final persistence. The light/dark native component renders were inspected; full device interaction still needs a spoken-call check.

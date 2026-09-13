@@ -38,7 +38,8 @@ final class LiveSession: ObservableObject {
     private var conversation: SimpleConversation?
     private var observers: [NSObjectProtocol] = []
     private var persisted = false
-    private var taskRecords: [MessageStruct] = []
+    @Published private(set) var liveMessages: [MessageStruct] = []
+    var conversationID: String? { conversation?.id }
 
     private init() {
         let center = NotificationCenter.default
@@ -84,7 +85,7 @@ final class LiveSession: ObservableObject {
             state = .failed; status = "Add your OpenAI API key in Settings → Keys to start live chat."; return
         }
         state = .connecting; status = "Connecting…"; muted = false
-        fragments = []; taskRecords = []; persisted = false; consumedFragments = 0
+        fragments = []; liveMessages = []; persisted = false; consumedFragments = 0
         seenEvents = []; seenDelegations = []; delegations = []
         generation = UUID(); finalUsage = nil
         let token = generation
@@ -168,6 +169,12 @@ final class LiveSession: ObservableObject {
             fragments.append(LiveTranscriptFragment(id: event["event_id"] as? String ?? UUID().uuidString,
                 role: type == "session.input_transcript.delta" ? "user" : "assistant", delta: text,
                 startMS: event["start_ms"] as? Double ?? 0, endMS: event["end_ms"] as? Double ?? 0))
+            let role = type == "session.input_transcript.delta" ? "user" : "assistant"
+            if let last = liveMessages.last, last.role == role, last.model == "GPT Live 1" {
+                liveMessages[liveMessages.count - 1].content += text
+            } else {
+                liveMessages.append(MessageStruct(role: role, content: text, model: "GPT Live 1"))
+            }
         case "session.delegation.created":
             guard let delegation = event["delegation"] as? [String: Any],
                   delegation["target"] as? String == "client", let id = delegation["id"] as? String,
@@ -246,14 +253,9 @@ final class LiveSession: ObservableObject {
     private func persistTranscript() {
         guard !persisted, let conversation = conversation else { return }
         persisted = true
-        // Transcript rows are display groupings, never tool-execution triggers.
-        var rows: [MessageStruct] = []
-        for fragment in fragments.sorted(by: { $0.startMS < $1.startMS }) {
-            if rows.last?.role == fragment.role { rows[rows.count - 1].content += fragment.delta }
-            else { rows.append(MessageStruct(role: fragment.role, content: fragment.delta, model: "GPT Live 1")) }
-        }
-        for row in rows + taskRecords { SimpleConversationManager.shared.addMessage(row, to: conversation) }
-        taskRecords = []
+        // Persist exactly the rows shown live, with stable IDs and tool ordering.
+        // They remain available to the UI until it reloads the saved conversation.
+        for row in liveMessages { SimpleConversationManager.shared.addMessage(row, to: conversation) }
     }
 
     private func addLatestContext() {
@@ -330,8 +332,8 @@ final class LiveSession: ObservableObject {
         call.conversationId = conversation?.id
         status = "Using \(call.name.replacingOccurrences(of: "_", with: " "))…"
         let origin = conversation
-        let record = MessageStruct(role: "assistant", content: "LoopHarness started tool \(call.name). Its outcome is not yet confirmed; check before repeating it.", model: ModelSelectionStore.current.stampedMessageModel)
-        taskRecords.append(record)
+        let record = MessageStruct(role: "assistant", content: "Using \(call.name.replacingOccurrences(of: "_", with: " "))…", model: ModelSelectionStore.current.stampedMessageModel)
+        liveMessages.append(record)
         AgentActivityLog.shared.log(.toolCall, call.name)
         SkillDispatcher.shared.dispatch(call) { [weak self] result in
             DispatchQueue.main.async {
@@ -342,8 +344,8 @@ final class LiveSession: ObservableObject {
                 var finishedRecord = record
                 finishedRecord.content = "LoopHarness tool \(call.name) returned:\n" + paired.content
                 if self.workID == work && self.state == .connected {
-                    if let index = self.taskRecords.firstIndex(where: { $0.id == record.id }) {
-                        self.taskRecords[index] = finishedRecord
+                    if let index = self.liveMessages.firstIndex(where: { $0.id == record.id }) {
+                        self.liveMessages[index] = finishedRecord
                     }
                 } else if let origin = origin {
                     SimpleConversationManager.shared.updateMessage(finishedRecord, in: origin)
@@ -357,7 +359,7 @@ final class LiveSession: ObservableObject {
 
     private func complete(_ result: String, delegation: String, work: UUID) {
         guard state == .connected, workID == work else { return }
-        taskRecords.append(MessageStruct(role: "assistant", content: "LoopHarness result:\n" + result,
+        liveMessages.append(MessageStruct(role: "assistant", content: "LoopHarness result:\n" + result,
                                          model: ModelSelectionStore.current.stampedMessageModel))
         let spokenResult = result.utf8.count <= 6000 ? result : String(result.prefix(1000)) + "… The full result is saved in the chat."
         for event in LiveProtocol.commentary(spokenResult, delegationID: delegation) { send(event) }

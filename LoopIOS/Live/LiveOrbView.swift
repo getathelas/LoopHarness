@@ -73,3 +73,91 @@ struct LiveOrbView: View {
         .shadow(color: .black.opacity(0.13), radius: 24, y: 12)
     }
 }
+
+/// The live identity occupies the existing navigation avatar slot.
+struct LiveCompactOrb: View {
+    @ObservedObject var session: LiveSession
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 24, paused: reduceMotion || !session.isActive)) { context in
+            let phase = reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate
+            let level = Double(max(session.inputLevel, session.outputLevel))
+            Circle()
+                .fill(RadialGradient(colors: [.white, .cyan, .blue, .indigo],
+                    center: UnitPoint(x: 0.32 + sin(phase) * 0.06, y: 0.28), startRadius: 0, endRadius: 34))
+                .overlay(Circle().stroke(.white.opacity(0.3), lineWidth: 0.7))
+                .frame(width: 31, height: 31)
+                .scaleEffect(reduceMotion ? 1 : 1 + level * 0.18 + sin(phase * 2) * 0.025)
+                .shadow(color: .blue.opacity(session.isActive ? 0.6 : 0.15), radius: 5 + level * 4)
+                .opacity(session.isActive ? 1 : 0.45)
+                .frame(width: 44, height: 44)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(session.isActive ? "Live voice active" : "Live voice ended")
+    }
+}
+
+/// Small, persistent call controls leave the conversation unobstructed.
+struct LiveCallControls: View {
+    @ObservedObject var session: LiveSession
+    let onRetry: () -> Void
+    let onClose: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Circle().fill(session.isActive ? Color.cyan : .secondary).frame(width: 5, height: 5)
+                    Text("Live").font(.subheadline.weight(.semibold))
+                }
+                Text(session.muted && session.state == .connected ? "Microphone muted" : session.status)
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(2)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if session.state == .failed || session.state == .idle {
+                Button(action: onRetry) {
+                    Image(systemName: "arrow.clockwise").frame(width: 40, height: 40)
+                }.accessibilityLabel("Retry live chat")
+            } else {
+                Button { session.toggleMute() } label: {
+                    Image(systemName: session.muted ? "mic.slash.fill" : "mic.fill")
+                        .frame(width: 40, height: 40)
+                        .background(.primary.opacity(0.07), in: Circle())
+                }
+                .disabled(session.state != .connected)
+                .accessibilityLabel(session.muted ? "Unmute microphone" : "Mute microphone")
+            }
+            Button(action: onClose) {
+                Image(systemName: "phone.down.fill").foregroundStyle(.white)
+                    .frame(width: 44, height: 40).background(.red, in: Capsule())
+            }.accessibilityLabel("End live chat")
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24))
+        .padding(.vertical, 8)
+    }
+}
+
+/// A quiet active-call outline grows brighter with actual speaker output.
+/// The host disables hit testing so it never blocks system or chat gestures.
+struct LiveSpeakingBorder: View {
+    @ObservedObject var session: LiveSession
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 24, paused: reduceMotion || !session.isActive)) { context in
+            let level = Double(session.outputLevel)
+            let phase = reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate
+            let strength = session.isActive ? 0.22 + level * 0.65 : 0
+            RoundedRectangle(cornerRadius: 48)
+                .strokeBorder(AngularGradient(colors: [.blue, .cyan, .blue.opacity(0.45), .blue],
+                    center: .center, angle: .degrees(reduceMotion ? 0 : phase * 24)), lineWidth: reduceMotion ? 3 : 2 + level * 3)
+                .opacity(strength)
+                .shadow(color: .blue.opacity(strength), radius: 5 + level * 9)
+                .padding(2)
+        }
+        .ignoresSafeArea().allowsHitTesting(false).accessibilityHidden(true)
+    }
+}
