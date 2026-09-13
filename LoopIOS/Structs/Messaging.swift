@@ -57,6 +57,7 @@ struct Conversation {
 }
 
 struct FunctionCallStruct {
+    var liveRequestID: String? = nil
     var name: String
     var arguments: [String: Any]
     /// Provider-issued id for this call. Anthropic returns it as `tool_use.id`;

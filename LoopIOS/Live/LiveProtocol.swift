@@ -56,6 +56,7 @@ struct LiveToolRecord: Codable, Identifiable {
     var name: String
     var input: String
     var output: String = ""
+    var images: [LiveImageResult]? = nil
     var state: String = "running"
     var startedAt: Date = Date()
     var finishedAt: Date?
@@ -84,4 +85,14 @@ struct LiveActivityRecord: Codable {
             "Tool \($0.name) [\($0.state)]\nInputs: \($0.input)\nResult: \($0.output)"
         }).joined(separator: "\n\n")
     }
+}
+
+struct LiveImageResult: Codable, Identifiable {
+    var id: String
+    var title: String
+    var url: String?
+    var thumbnailURL: String?
+    var sourceURL: String?
+    var state: String
+    var failureReason: String?
 }

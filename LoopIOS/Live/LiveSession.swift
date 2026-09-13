@@ -31,6 +31,7 @@ final class LiveSession: ObservableObject {
     private var seenEvents = Set<String>()
     private var seenDelegations = Set<String>()
     private var delegations: [String] = []
+    private var pendingImages: [String: (origin: SimpleConversation, rowID: String, toolID: String, snapshot: MessageStruct)] = [:]
     private var workID: UUID?
     private var workTimeout: Task<Void, Never>?
     private var history: [MessageStruct] = []
@@ -344,6 +345,7 @@ final class LiveSession: ObservableObject {
         }
         var call = calls[index]
         call.conversationId = conversation?.id
+        call.liveRequestID = work.uuidString
         status = "Using \(call.name.replacingOccurrences(of: "_", with: " "))…"
         let origin = conversation
         let toolID = call.callId ?? UUID().uuidString
@@ -367,6 +369,17 @@ final class LiveSession: ObservableObject {
                 guard var record = self.liveMessages.first(where: { $0.id == work.uuidString }) ?? startingRecord,
                       let tool = record.liveActivity?.tools.firstIndex(where: { $0.id == toolID }) else { return }
                 record.liveActivity?.tools[tool].finish(paired.content)
+                if let gallery = paired.imageGalleryAttachment {
+                    record.liveActivity?.tools[tool].images = gallery.items.enumerated().map { offset, item in
+                        LiveImageResult(id: gallery.id + "-" + String(offset), title: item.title ?? gallery.query,
+                            url: item.originalURL, thumbnailURL: item.thumbnailURL, sourceURL: item.sourceLink, state: "ready")
+                    }
+                }
+                if record.liveActivity?.tools[tool].images?.contains(where: { $0.state == "generating" }) == true {
+                    record.liveActivity?.tools[tool].state = "generating image"
+                } else if let images = record.liveActivity?.tools[tool].images, !images.isEmpty {
+                    record.liveActivity?.tools[tool].state = images.contains { $0.state == "failed" } ? "failed" : "completed"
+                }
                 if let activity = record.liveActivity { record.content = activity.contextText }
                 if let row = self.liveMessages.firstIndex(where: { $0.id == work.uuidString }) { self.liveMessages[row] = record }
                 if self.workID != work || self.state != .connected {
@@ -381,6 +394,37 @@ final class LiveSession: ObservableObject {
                 self.execute(calls, index: index + 1, delegation: delegation, work: work, remaining: remaining, transcriptCount: transcriptCount)
             }
         }
+    }
+
+    func registerLiveImage(_ attachment: ImageAttachment, requestID: String) {
+        guard let origin = conversation,
+              let record = liveMessages.first(where: { $0.id == requestID }),
+              let tool = record.liveActivity?.tools.last(where: { $0.name == "generate_image" && $0.images == nil }) else { return }
+        pendingImages[attachment.id] = (origin, record.id, tool.id, record)
+    }
+
+    /// Returns true only for images submitted by this Live tool loop. Other
+    /// generators retain their existing chat host. Keep routing after End.
+    @discardableResult func receiveLiveImage(_ attachment: ImageAttachment) -> Bool {
+        guard let pending = pendingImages[attachment.id] else { return false }
+        let stored = SimpleConversationManager.shared.getMessages(for: pending.origin).first { $0.id == pending.rowID }
+        var record = liveMessages.first { $0.id == pending.rowID }
+            ?? stored.map { SimpleConversationManager.shared.messageStruct(from: $0) } ?? pending.snapshot
+        guard let index = record.liveActivity?.tools.firstIndex(where: { $0.id == pending.toolID }) else { return true }
+        let image = LiveImageResult(id: attachment.id, title: attachment.prompt,
+            url: attachment.fileURL?.absoluteString, state: attachment.status.rawValue, failureReason: attachment.failureReason)
+        var images = record.liveActivity?.tools[index].images ?? []
+        if let i = images.firstIndex(where: { $0.id == image.id }) { images[i] = image } else { images.append(image) }
+        record.liveActivity?.tools[index].images = images
+        record.liveActivity?.tools[index].state = attachment.status == .generating ? "generating image" : attachment.status == .ready ? "completed" : "failed"
+        if attachment.status != .generating { record.liveActivity?.tools[index].finishedAt = Date() }
+        if let activity = record.liveActivity { record.content = activity.contextText }
+        if let row = liveMessages.firstIndex(where: { $0.id == record.id }) { liveMessages[row] = record }
+        if persisted || conversation?.id != pending.origin.id || stored != nil {
+            SimpleConversationManager.shared.updateMessage(record, in: pending.origin)
+        }
+        if attachment.status != .generating { pendingImages.removeValue(forKey: attachment.id) }
+        return true
     }
 
     private func complete(_ result: String, delegation: String, work: UUID, failed: Bool = false) {

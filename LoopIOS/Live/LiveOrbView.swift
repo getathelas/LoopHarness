@@ -1,4 +1,9 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#else
+import AppKit
+#endif
 
 struct LiveOrbView: View {
     @ObservedObject var session: LiveSession
@@ -183,6 +188,14 @@ struct LiveReasoningCard: View {
                     Image(systemName: expanded ? "chevron.up" : "chevron.down").font(.caption)
                 }.contentShape(Rectangle())
             }.buttonStyle(.plain).accessibilityLabel(expanded ? "Hide reasoning and tool details" : "Show reasoning and tool details")
+            let images = activity.tools.flatMap { $0.images ?? [] }
+            if !images.isEmpty {
+                ScrollView(.horizontal) {
+                    HStack(alignment: .top, spacing: 12) {
+                        ForEach(images) { image in LiveImageTile(result: image) }
+                    }
+                }.scrollIndicators(.hidden)
+            }
             if !expanded && !activity.summary.isEmpty {
                 Text(activity.summary).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
             }
@@ -218,5 +231,77 @@ struct LiveReasoningCard: View {
         .padding(14).frame(maxWidth: .infinity, alignment: .leading)
         .background(.orange.opacity(0.06), in: RoundedRectangle(cornerRadius: 18))
         .overlay(RoundedRectangle(cornerRadius: 18).stroke(.orange.opacity(0.18), lineWidth: 1))
+    }
+}
+
+struct LiveImageTile: View {
+    let result: LiveImageResult
+    @State private var enlarged = false
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if result.state == "generating" {
+                VStack(spacing: 10) { ProgressView(); Text("Creating image…").font(.caption) }
+                    .frame(width: 210, height: 150).background(.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
+            } else if result.state == "failed" {
+                VStack(spacing: 8) {
+                    Image(systemName: "photo.badge.exclamationmark")
+                    Text(result.failureReason ?? "Image generation failed").font(.caption).lineLimit(4)
+                }.frame(width: 210, height: 150)
+            } else if let url = result.thumbnailURL ?? result.url {
+                Button { enlarged = true } label: {
+                    LiveImageAsset(url: url).frame(width: 210, height: 150)
+                        .background(.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                }.buttonStyle(.plain).accessibilityLabel("Open image: " + result.title)
+            }
+            Text(result.title).font(.caption).lineLimit(2).frame(width: 210, alignment: .leading)
+            if let source = result.sourceURL, let url = URL(string: source), ["http", "https"].contains(url.scheme ?? "") {
+                Link(url.host ?? "View source", destination: url).font(.caption2)
+            }
+        }
+        .sheet(isPresented: $enlarged) {
+            VStack(spacing: 16) {
+                HStack {
+                    Text(result.title).font(.headline).lineLimit(3)
+                    Spacer()
+                    Button("Done") { enlarged = false }
+                }
+                if let url = result.url { LiveImageAsset(url: url).frame(maxWidth: .infinity, maxHeight: .infinity) }
+            }.padding()
+        }
+    }
+}
+
+private struct LiveImageAsset: View {
+    let url: String
+    @State private var image: Image?
+    @State private var failed = false
+    var body: some View {
+        Group {
+            if let image { image.resizable().scaledToFit() }
+            else if failed { Label("Image unavailable", systemImage: "photo").font(.caption) }
+            else { ProgressView() }
+        }
+        .task(id: url) {
+            image = nil; failed = false
+            guard let resource = URL(string: url), resource.isFileURL || ["http", "https"].contains(resource.scheme ?? "") else { failed = true; return }
+            do {
+                let data: Data
+                if resource.isFileURL { data = try await Task.detached { try Data(contentsOf: resource) }.value }
+                else {
+                    let response: URLResponse
+                    (data, response) = try await URLSession.shared.data(from: resource)
+                    guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { failed = true; return }
+                }
+                guard !Task.isCancelled else { return }
+                #if canImport(UIKit)
+                guard let bitmap = UIImage(data: data) else { failed = true; return }
+                image = Image(uiImage: bitmap)
+                #else
+                guard let bitmap = NSImage(data: data) else { failed = true; return }
+                image = Image(nsImage: bitmap)
+                #endif
+            } catch { if !Task.isCancelled { failed = true } }
+        }
     }
 }

@@ -2,8 +2,9 @@ import Foundation
 import Combine
 import AVFoundation
 
-struct FunctionCallStruct { var name: String; var arguments: [String: Any] = [:]; var callId: String?; var conversationId: String? }
+struct FunctionCallStruct { var name: String; var arguments: [String: Any] = [:]; var liveRequestID: String? = nil; var callId: String?; var conversationId: String? }
 struct MessageStruct {
+ var imageGalleryAttachment: ImageGalleryAttachment? = nil
  var liveActivity: LiveActivityRecord? = nil
  var id = UUID().uuidString
  var role: String; var content: String; var model: String = "Test"; var name: String? = nil; var callId: String? = nil
@@ -14,10 +15,10 @@ extension Notification.Name { static let activeConversationDidChange = Notificat
 final class SimpleConversationManager {
  static let shared = SimpleConversationManager(); var saved: [MessageStruct] = []; var currentConversation: SimpleConversation? = SimpleConversation()
  func createConversation(title: String) -> SimpleConversation { SimpleConversation() }
- func getMessages(for: SimpleConversation) -> [MessageStruct] { [] }
+ func getMessages(for: SimpleConversation) -> [MessageStruct] { saved }
  func messageStruct(from value: MessageStruct) -> MessageStruct { value }
  func addMessage(_ m: MessageStruct, to: SimpleConversation) { saved.append(m) }
- func updateMessage(_ m: MessageStruct, in: SimpleConversation) {}
+ func updateMessage(_ m: MessageStruct, in: SimpleConversation) { if let index = saved.firstIndex(where: { $0.id == m.id }) { saved[index] = m } }
 }
 final class KeyStore {
  enum Key { case openAI; var displayName: String { "Test" } }; static let shared = KeyStore()
@@ -37,7 +38,8 @@ final class Cloud {
 }
 final class SkillDispatcher {
  static let shared = SkillDispatcher()
- func dispatch(_ c: FunctionCallStruct, completion: @escaping (MessageStruct) -> Void) { completion(MessageStruct(role:"function",content:"test result")) }
+ var gallery: ImageGalleryAttachment?
+ func dispatch(_ c: FunctionCallStruct, completion: @escaping (MessageStruct) -> Void) { completion(MessageStruct(imageGalleryAttachment: gallery, role:"function",content:"test result")) }
 }
 
 final class ToolCallGuard {
@@ -93,5 +95,119 @@ extension LiveSession {
  }
 }
 @main struct Tests {
- static func main() throws { try LiveSession.shared.testLiveRows() }
+ static func main() throws {
+  try LiveSession.shared.testLiveRows()
+  LiveSession.testImageRouting()
+  try LiveSession.testGalleryRouting()
+ }
+}
+
+struct ImageAttachment: Codable {
+    enum Status: String, Codable, Equatable {
+        case generating
+        case ready
+        case failed
+    }
+
+    let id: String
+    let prompt: String
+    var fileURL: URL?
+    var status: Status
+    var failureReason: String?
+    /// Conversation the generation belongs to. Captured at submit time so the
+    /// host can route the bubble to the right tab on multi-tab Mac, even if
+    /// the user switches tabs between "tool call fired" and "image ready".
+    /// Optional for backward compatibility with callers (iOS / older paths)
+    /// that don't supply it — those clients render whatever conversation is
+    /// currently visible, which is the right behavior for single-tab UIs.
+    let conversationId: String?
+
+    init(id: String = UUID().uuidString,
+         prompt: String,
+         fileURL: URL? = nil,
+         status: Status = .generating,
+         failureReason: String? = nil,
+         conversationId: String? = nil) {
+        self.id = id
+        self.prompt = prompt
+        self.fileURL = fileURL
+        self.status = status
+        self.failureReason = failureReason
+        self.conversationId = conversationId
+    }
+}
+struct ImageGalleryAttachment: Codable, Equatable {
+    struct Item: Codable, Equatable {
+        /// Small image URL used for the thumbnail grid.
+        let thumbnailURL: String
+        /// Full-resolution image URL opened on tap.
+        let originalURL: String
+        /// Source page the image was found on (for attribution / "view source").
+        let sourceLink: String?
+        /// Short image title from the search result.
+        let title: String?
+    }
+
+    let id: String
+    /// The search query that produced these results (shown as a caption).
+    let query: String
+    let items: [Item]
+    var conversationId: String?
+
+    init(id: String = UUID().uuidString,
+         query: String,
+         items: [Item],
+         conversationId: String? = nil) {
+        self.id = id
+        self.query = query
+        self.items = items
+        self.conversationId = conversationId
+    }
+}
+
+extension LiveSession {
+ static func testImageRouting() { LiveSession().testImageUpdates() }
+ func testImageUpdates() {
+  SimpleConversationManager.shared.saved = []
+  conversation = SimpleConversation(); state = .connected
+  let request = UUID().uuidString
+  var row = MessageStruct(id: request, role: "assistant", content: "Image request")
+  row.liveActivity = LiveActivityRecord(tools: [LiveToolRecord(id: "image-tool", name: "generate_image", input: "{}")])
+  liveMessages = [row]
+  let pending = ImageAttachment(id: "image-1", prompt: "Test illustration", status: .generating)
+  registerLiveImage(pending, requestID: request)
+  precondition(receiveLiveImage(pending))
+  precondition(liveMessages[0].liveActivity?.tools[0].images?[0].state == "generating")
+  persistTranscript()
+  liveMessages = [] // Another call replaces the UI while generation finishes.
+  let ready = ImageAttachment(id: "image-1", prompt: pending.prompt, fileURL: URL(fileURLWithPath: "/tmp/test-image.png"), status: .ready)
+  precondition(receiveLiveImage(ready))
+  let saved = SimpleConversationManager.shared.saved[0]
+  precondition(saved.liveActivity?.tools[0].images?[0].state == "ready")
+  precondition(saved.liveActivity?.tools[0].images?[0].url == "file:///tmp/test-image.png")
+  precondition(!receiveLiveImage(ready)) // Completed routing is removed.
+  precondition(!receiveLiveImage(ImageAttachment(prompt: "Unrelated")))
+  print("PASS: generating placeholder, late image persistence after End, unrelated image isolation")
+ }
+}
+
+extension LiveSession {
+ static func testGalleryRouting() throws {
+  let session = LiveSession()
+  session.conversation = SimpleConversation(); session.state = .connected
+  let work = UUID(); session.workID = work
+  var row = MessageStruct(id: work.uuidString, role: "assistant", content: "Searching")
+  row.liveActivity = LiveActivityRecord()
+  session.liveMessages = [row]
+  SkillDispatcher.shared.gallery = ImageGalleryAttachment(query: "Landscapes", items: [.init(thumbnailURL: "https://example.com/thumb.png", originalURL: "https://example.com/full.png", sourceLink: "https://example.com/page", title: "Landscape")])
+  session.execute([FunctionCallStruct(name: "image_search", callId: "search")], index: 0, delegation: "opaque", work: work, remaining: 2, transcriptCount: 0)
+  RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+  let activity = session.liveMessages[0].liveActivity!
+  let restored = try JSONDecoder().decode(LiveActivityRecord.self, from: JSONEncoder().encode(activity))
+  precondition(restored.tools[0].images?.first?.sourceURL == "https://example.com/page")
+  precondition(restored.tools[0].images?.first?.url == "https://example.com/full.png")
+  precondition(restored.tools[0].images?.first?.thumbnailURL == "https://example.com/thumb.png")
+  SkillDispatcher.shared.gallery = nil
+  print("PASS: image search thumbnails, full images and source links survive serialization")
+ }
 }
