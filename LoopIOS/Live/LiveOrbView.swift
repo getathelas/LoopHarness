@@ -161,3 +161,62 @@ struct LiveSpeakingBorder: View {
         .ignoresSafeArea().allowsHitTesting(false).accessibilityHidden(true)
     }
 }
+
+struct LiveReasoningCard: View {
+    let activity: LiveActivityRecord
+    let model: String
+    let expanded: Bool
+    let toggle: () -> Void
+
+    private var displayModel: String { model.components(separatedBy: " via ").first ?? model }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Button(action: toggle) {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "sparkles").foregroundStyle(.orange)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Reasoning & tools · " + displayModel).font(.caption.weight(.semibold))
+                        Text(activity.state == "complete" ? (activity.tools.isEmpty ? "Reviewed your request" : "Used \(activity.tools.count) \(activity.tools.count == 1 ? "tool" : "tools")") : activity.state.capitalized)
+                            .font(.subheadline).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: expanded ? "chevron.up" : "chevron.down").font(.caption)
+                }.contentShape(Rectangle())
+            }.buttonStyle(.plain).accessibilityLabel(expanded ? "Hide reasoning and tool details" : "Show reasoning and tool details")
+            if !expanded && !activity.summary.isEmpty {
+                Text(activity.summary).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+            }
+            if expanded {
+                ForEach(activity.tools) { tool in
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Image(systemName: tool.state == "running" ? "ellipsis.circle" : tool.state == "completed" ? "checkmark.circle" : tool.state == "returned" ? "arrow.turn.down.right" : "exclamationmark.circle")
+                                .foregroundStyle(tool.state == "completed" ? Color.green : .orange)
+                            Text(tool.name.replacingOccurrences(of: "_", with: " ")).font(.subheadline.weight(.medium))
+                            Spacer()
+                            Text(tool.state.capitalized).font(.caption).foregroundStyle(.secondary)
+                        }
+                        if let end = tool.finishedAt {
+                            Text(String(format: "%.1fs", end.timeIntervalSince(tool.startedAt))).font(.caption2).foregroundStyle(.secondary)
+                        }
+                        DisclosureGroup("Inputs & result") {
+                        Text("Inputs").font(.caption.weight(.semibold))
+                        Text(tool.input).font(.caption.monospaced()).textSelection(.enabled)
+                        if !tool.output.isEmpty {
+                            Text("Result").font(.caption.weight(.semibold))
+                            Text(tool.output).font(.caption).textSelection(.enabled)
+                        }
+                        }.font(.caption).tint(.secondary)
+                    }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
+                }
+                if !activity.summary.isEmpty {
+                    Text(activity.summary).font(.subheadline).textSelection(.enabled)
+                }
+            }
+        }
+        .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+        .background(.orange.opacity(0.06), in: RoundedRectangle(cornerRadius: 18))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(.orange.opacity(0.18), lineWidth: 1))
+    }
+}

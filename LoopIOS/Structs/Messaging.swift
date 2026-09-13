@@ -93,6 +93,7 @@ struct TokenUsage {
 }
 
 struct MessageStruct {
+    var liveActivity: LiveActivityRecord? = nil
     var id: String = UUID().uuidString
     var role: String
     var content: String

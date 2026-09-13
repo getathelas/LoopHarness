@@ -170,6 +170,11 @@ final class LiveSession: ObservableObject {
                 role: type == "session.input_transcript.delta" ? "user" : "assistant", delta: text,
                 startMS: event["start_ms"] as? Double ?? 0, endMS: event["end_ms"] as? Double ?? 0))
             let role = type == "session.input_transcript.delta" ? "user" : "assistant"
+            if role == "assistant" {
+                for index in liveMessages.indices where liveMessages[index].liveActivity?.state == "complete" {
+                    liveMessages[index].liveActivity?.spoken = true
+                }
+            }
             if let last = liveMessages.last, last.role == role, last.model == "GPT Live 1" {
                 liveMessages[liveMessages.count - 1].content += text
             } else {
@@ -253,6 +258,12 @@ final class LiveSession: ObservableObject {
     private func persistTranscript() {
         guard !persisted, let conversation = conversation else { return }
         persisted = true
+        for index in liveMessages.indices where liveMessages[index].liveActivity != nil && ["thinking", "working"].contains(liveMessages[index].liveActivity?.state ?? "") {
+            liveMessages[index].liveActivity?.state = "ended before completion"
+        }
+        for index in liveMessages.indices {
+            if let activity = liveMessages[index].liveActivity { liveMessages[index].content = activity.contextText }
+        }
         // Persist exactly the rows shown live, with stable IDs and tool ordering.
         // They remain available to the UI until it reloads the saved conversation.
         for row in liveMessages { SimpleConversationManager.shared.addMessage(row, to: conversation) }
@@ -272,6 +283,9 @@ final class LiveSession: ObservableObject {
         // tool batch. Keep loop protection active within this request.
         ToolCallGuard.shared.resetForNewTurn()
         let work = UUID(); workID = work; thinking = true
+        var card = MessageStruct(id: work.uuidString, role: "assistant", content: "Reasoning in progress", model: ModelSelectionStore.current.stampedMessageModel)
+        card.liveActivity = LiveActivityRecord()
+        liveMessages.append(card)
         status = "LoopHarness is thinking…"
         workTimeout = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 120_000_000_000)
@@ -288,7 +302,7 @@ final class LiveSession: ObservableObject {
         let selected = ModelSelectionStore.current
         if let key = selected.requiredKey,
            KeyStore.shared.value(for: key)?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
-            complete("\(selected.stampedMessageModel) cannot run because its \(key.displayName) key is unavailable. Open Settings → Keys to reconnect it, or select another thinking model in Settings → Model. No tool was run.", delegation: delegation, work: work)
+            complete("\(selected.stampedMessageModel) cannot run because its \(key.displayName) key is unavailable. Open Settings → Keys to reconnect it, or select another thinking model in Settings → Model.", delegation: delegation, work: work, failed: true)
             return
         }
         addLatestContext()
@@ -301,7 +315,7 @@ final class LiveSession: ObservableObject {
                     let code = (error as NSError?)?.code ?? 0
                     let message = "\(selected.stampedMessageModel) failed before returning a result (error \(code)). Check its connection and access in Settings → Keys and Settings → Model."
                     AgentActivityLog.shared.log(.status, message)
-                    self.complete(message, delegation: delegation, work: work); return
+                    self.complete(message, delegation: delegation, work: work, failed: true); return
                 }
                 // Reconsider tool calls if the user corrected the request during inference.
                 if !response.functions.isEmpty, self.fragments.dropFirst(snapshot).contains(where: { $0.role == "user" }) {
@@ -332,8 +346,15 @@ final class LiveSession: ObservableObject {
         call.conversationId = conversation?.id
         status = "Using \(call.name.replacingOccurrences(of: "_", with: " "))…"
         let origin = conversation
-        let record = MessageStruct(role: "assistant", content: "Using \(call.name.replacingOccurrences(of: "_", with: " "))…", model: ModelSelectionStore.current.stampedMessageModel)
-        liveMessages.append(record)
+        let toolID = call.callId ?? UUID().uuidString
+        let input = (try? JSONSerialization.data(withJSONObject: call.arguments, options: [.prettyPrinted, .sortedKeys]))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        let readOnly = ["get_", "list_", "read_", "search_", "find_", "check_", "file_read", "file_list", "file_search"].contains { call.name.hasPrefix($0) }
+        if let row = liveMessages.firstIndex(where: { $0.id == work.uuidString }) {
+            liveMessages[row].liveActivity?.state = "working"
+            liveMessages[row].liveActivity?.tools.append(LiveToolRecord(id: toolID, name: call.name, input: input, needsAttention: !readOnly))
+        }
+        let startingRecord = liveMessages.first { $0.id == work.uuidString }
         AgentActivityLog.shared.log(.toolCall, call.name)
         SkillDispatcher.shared.dispatch(call) { [weak self] result in
             DispatchQueue.main.async {
@@ -341,26 +362,35 @@ final class LiveSession: ObservableObject {
                 var paired = result
                 paired.callId = call.callId; paired.name = call.name
                 AgentActivityLog.shared.log(.toolResult, call.name + " finished")
-                var finishedRecord = record
-                finishedRecord.content = "LoopHarness tool \(call.name) returned:\n" + paired.content
-                if self.workID == work && self.state == .connected {
-                    if let index = self.liveMessages.firstIndex(where: { $0.id == record.id }) {
-                        self.liveMessages[index] = finishedRecord
+                // Update the same durable request card, including late results
+                // after End. Never replay a tool merely to reconstruct its UI.
+                guard var record = self.liveMessages.first(where: { $0.id == work.uuidString }) ?? startingRecord,
+                      let tool = record.liveActivity?.tools.firstIndex(where: { $0.id == toolID }) else { return }
+                record.liveActivity?.tools[tool].finish(paired.content)
+                if let activity = record.liveActivity { record.content = activity.contextText }
+                if let row = self.liveMessages.firstIndex(where: { $0.id == work.uuidString }) { self.liveMessages[row] = record }
+                if self.workID != work || self.state != .connected {
+                    if ["thinking", "working"].contains(record.liveActivity?.state ?? "") {
+                        record.liveActivity?.state = "ended before completion"
+                        if let activity = record.liveActivity { record.content = activity.contextText }
                     }
-                } else if let origin = origin {
-                    SimpleConversationManager.shared.updateMessage(finishedRecord, in: origin)
+                    if let origin { SimpleConversationManager.shared.updateMessage(record, in: origin) }
                     return
-                } else { return }
+                }
                 self.history.append(paired)
                 self.execute(calls, index: index + 1, delegation: delegation, work: work, remaining: remaining, transcriptCount: transcriptCount)
             }
         }
     }
 
-    private func complete(_ result: String, delegation: String, work: UUID) {
+    private func complete(_ result: String, delegation: String, work: UUID, failed: Bool = false) {
         guard state == .connected, workID == work else { return }
-        liveMessages.append(MessageStruct(role: "assistant", content: "LoopHarness result:\n" + result,
-                                         model: ModelSelectionStore.current.stampedMessageModel))
+        if let row = liveMessages.firstIndex(where: { $0.id == work.uuidString }) {
+            liveMessages[row].content = result
+            liveMessages[row].liveActivity?.summary = result
+            liveMessages[row].liveActivity?.state = failed ? "failed" : "complete"
+            if let activity = liveMessages[row].liveActivity { liveMessages[row].content = activity.contextText }
+        }
         let spokenResult = result.utf8.count <= 6000 ? result : String(result.prefix(1000)) + "… The full result is saved in the chat."
         for event in LiveProtocol.commentary(spokenResult, delegationID: delegation) { send(event) }
         guard state == .connected, workID == work else { return }

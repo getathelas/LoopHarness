@@ -6,6 +6,7 @@
 //
 
 import UIKit
+import SwiftUI
 import AVFoundation
 import FoundationModels
 import QuickLook
@@ -378,6 +379,7 @@ When the user asks how you work, what you can do, or how you're built, read `ABO
     /// Message ids whose "Used N tools" disclosure is currently expanded.
     /// Toggled by tapping the disclosure header; consulted in `cellForRowAt`.
     private var expandedToolMessageIds = Set<String>()
+    private var liveActivityExpansion: [String: Bool] = [:]
 
     var visible_messages: [MessageStruct] {
         let filtered = self.messages.filter({
@@ -3462,6 +3464,22 @@ extension MessagingVC: UITableViewDelegate, UITableViewDataSource {
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        if indexPath.row < visible_messages.count {
+            let message = visible_messages[indexPath.row]
+            if let activity = message.liveActivity {
+                let cell = tableView.dequeueReusableCell(withIdentifier: "liveActivity") ?? UITableViewCell(style: .default, reuseIdentifier: "liveActivity")
+                let expanded = liveActivityExpansion[message.id] ?? activity.defaultExpanded
+                cell.backgroundColor = .clear; cell.selectionStyle = .none
+                cell.contentConfiguration = UIHostingConfiguration {
+                    LiveReasoningCard(activity: activity, model: message.model, expanded: expanded) { [weak self] in
+                        guard let self else { return }
+                        self.liveActivityExpansion[message.id] = !expanded
+                        self.tableView.reloadData()
+                    }
+                }.margins(.horizontal, 16).margins(.vertical, 8)
+                return cell
+            }
+        }
         if indexPath.row == self.visible_messages.count {
             let cell = tableView.dequeueReusableCell(withIdentifier: "cell", for: indexPath) as! MessagingCell
             // While streaming, this trailing row shows the partial assistant

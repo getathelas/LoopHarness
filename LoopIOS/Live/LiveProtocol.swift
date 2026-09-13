@@ -50,3 +50,38 @@ struct LiveTranscriptFragment: Codable, Identifiable {
     let startMS: Double
     let endMS: Double
 }
+
+struct LiveToolRecord: Codable, Identifiable {
+    var id: String
+    var name: String
+    var input: String
+    var output: String = ""
+    var state: String = "running"
+    var startedAt: Date = Date()
+    var finishedAt: Date?
+    var needsAttention: Bool = true
+
+    mutating func finish(_ result: String) {
+        output = result; finishedAt = Date()
+        let json = (try? JSONSerialization.jsonObject(with: Data(result.utf8))) as? [String: Any]
+        let status = (json?["status"] as? String ?? "").lowercased()
+        if json?["error"] != nil || ["error", "failed", "blocked"].contains(status) { state = "failed"; needsAttention = true }
+        else if ["pending", "requires_confirmation", "needs_confirmation", "requires_action"].contains(status) { state = "needs input"; needsAttention = true }
+        else if ["success", "completed", "ok"].contains(status) || json?["success"] as? Bool == true { state = "completed" }
+        else { state = "returned" }
+    }
+}
+
+struct LiveActivityRecord: Codable {
+    var state: String = "thinking"
+    var summary: String = ""
+    var tools: [LiveToolRecord] = []
+    var spoken: Bool = false
+    var keepVisible: Bool { state != "complete" || tools.contains { $0.needsAttention || !["returned", "completed"].contains($0.state) } }
+    var defaultExpanded: Bool { !spoken || keepVisible }
+    var contextText: String {
+        ([summary.isEmpty ? "Reasoning & tools: " + state : summary] + tools.map {
+            "Tool \($0.name) [\($0.state)]\nInputs: \($0.input)\nResult: \($0.output)"
+        }).joined(separator: "\n\n")
+    }
+}

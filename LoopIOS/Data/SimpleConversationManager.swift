@@ -45,6 +45,7 @@ struct SimpleConversation: Codable {
 }
 
 struct SimpleMessage: Codable {
+    var liveActivity: LiveActivityRecord? = nil
     let id: String
     let role: String
     let content: String
@@ -396,7 +397,7 @@ class SimpleConversationManager {
             }
         }
 
-        return SimpleMessage(
+        var row = SimpleMessage(
             id: messageStruct.id,
             role: messageStruct.role,
             content: messageStruct.content,
@@ -419,6 +420,8 @@ class SimpleConversationManager {
             responseSeconds: messageStruct.role == "assistant" ? messageStruct.ttft : nil,
             createdAt: createdAt
         )
+        row.liveActivity = messageStruct.liveActivity
+        return row
     }
 
     func getMessages(for conversation: SimpleConversation) -> [SimpleMessage] {
@@ -531,6 +534,7 @@ class SimpleConversationManager {
             name: simpleMessage.name,
             timestamp: simpleMessage.createdAt
         )
+        messageStruct.liveActivity = simpleMessage.liveActivity
         // Old NDJSON rows have no `model` field — leave the MessageStruct
         // default in place for those so behavior is unchanged for old chats.
         // User rows reuse this column for the dictation byline (see

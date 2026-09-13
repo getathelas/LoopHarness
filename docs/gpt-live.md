@@ -60,3 +60,9 @@ Checks progressive transcript grouping, stable row IDs, immediate tool activity,
 The iPhone speaking border is a child of the window root controller and is attached inside that controller’s view. A device crash report identified `UIViewControllerHierarchyInconsistency` when the old chat child was attached directly to UIWindow. A native simulator reproduction crashed with the old hierarchy and passed three attach/layout/detach cycles with the corrected hierarchy.
 
 The compact navigation orb belongs to UINavigationController, which owns the navigation bar containing its view. Live console capture identified a second hierarchy exception here; the expanded native reproduction covers both the header orb and screen border and passes repeated open/close cycles after both fixes.
+
+## Voice and reasoning history
+
+GPT Live speech is labelled **Voice · GPT Live 1** in blue. Each delegated request has one amber **Reasoning & tools** card attributed to the selected model, without the provider transport suffix. Tools appear when dispatched, with their input JSON, full output (including source URLs), call ID, state, start/end times and duration retained in the conversation. The details are expandable. Successful/read-only cards collapse after subsequent spoken output; actions, failures, and requests for input stay visible. Returned output is distinguished from explicit success. Ending a call marks unfinished requests rather than presenting them as completed; late tool results update the original record.
+
+Activity metadata and model attribution are encoded in the actual NDJSON message envelope. Older messages still decode without activity metadata. Tests cover activity serialization, error visibility, stable live rows, and no duplicate final persistence; an additional storage test exercised the actual SimpleMessage and MessageLineEnvelope encoder/decoder.

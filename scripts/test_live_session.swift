@@ -2,8 +2,9 @@ import Foundation
 import Combine
 import AVFoundation
 
-struct FunctionCallStruct { var name: String; var callId: String?; var conversationId: String? }
+struct FunctionCallStruct { var name: String; var arguments: [String: Any] = [:]; var callId: String?; var conversationId: String? }
 struct MessageStruct {
+ var liveActivity: LiveActivityRecord? = nil
  var id = UUID().uuidString
  var role: String; var content: String; var model: String = "Test"; var name: String? = nil; var callId: String? = nil
  var functions: [FunctionCallStruct] = []
@@ -66,13 +67,23 @@ extension LiveSession {
   precondition(liveMessages.count == 1 && liveMessages[0].content == "Hello there" && liveMessages[0].id == firstID)
   try transcript("assistant", "Checking now.")
   let work = UUID(); workID = work
+  var card = MessageStruct(id: work.uuidString, role: "assistant", content: "Working")
+  card.liveActivity = LiveActivityRecord()
+  liveMessages.append(card)
   execute([FunctionCallStruct(name: "test_lookup", callId: "call_1")], index: 0,
           delegation: "opaque", work: work, remaining: 2, transcriptCount: fragments.count)
-  precondition(liveMessages.count == 3 && liveMessages.last!.content.hasPrefix("Using "))
+  precondition(liveMessages.count == 3 && liveMessages.last!.liveActivity?.tools.count == 1)
   let toolID = liveMessages.last!.id
   RunLoop.main.run(until: Date().addingTimeInterval(0.2))
-  precondition(liveMessages.contains { $0.id == toolID && $0.content.contains("test result") })
+  precondition(liveMessages.contains { $0.id == toolID && $0.liveActivity?.tools.first?.output == "test result" })
   try transcript("assistant", "Here is your answer.")
+  precondition(liveMessages.first { $0.id == toolID }?.liveActivity?.spoken == true)
+  let activity = liveMessages.first { $0.id == toolID }!.liveActivity!
+  let restored = try JSONDecoder().decode(LiveActivityRecord.self, from: JSONEncoder().encode(activity))
+  precondition(restored.tools.first?.output == "test result")
+  var failure = LiveToolRecord(id: "failed", name: "get_test", input: "{}", needsAttention: false)
+  failure.finish("{\"status\":\"error\",\"error\":\"Unavailable\"}")
+  precondition(failure.state == "failed" && failure.needsAttention)
   let ids = liveMessages.map(\.id)
   persistTranscript(); persistTranscript()
   precondition(SimpleConversationManager.shared.saved.map(\.id) == ids)

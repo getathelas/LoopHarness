@@ -772,6 +772,7 @@ class MessagingCell: UITableViewCell {
     }
     
     func setData(data: MessageStruct, shouldAnimate: Bool) {
+        defer { if data.model == "GPT Live 1" { modelLabel.textColor = .systemBlue } }
         // Clear existing constraints
         clearAllConstraints()
 
@@ -1312,7 +1313,7 @@ class MessagingCell: UITableViewCell {
     /// Build the model-label base text, appending "| Context X%" when token
     /// usage data and a known context window size are both available.
     private func modelText(for data: MessageStruct) -> String {
-        var text = data.model
+        var text = data.model == "GPT Live 1" ? "Voice · GPT Live 1" : data.model
         // Time-to-first-token, right after the model name: "GPT-5.5 2.6s".
         if let ttft = data.ttft {
             text += String(format: " %.2fs", ttft)
