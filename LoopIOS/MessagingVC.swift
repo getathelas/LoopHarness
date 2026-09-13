@@ -167,7 +167,9 @@ When the user asks how you work, what you can do, or how you're built, read `ABO
     
     override var navigationController: UINavigationController? {
         get {
-            self.parent?.navigationController
+            // A navigation controller's own navigationController is nil.
+            // Preserve UIKit's lookup for direct and nested chat containers.
+            (parent as? UINavigationController) ?? super.navigationController
         }
     }
     // Side drawer
