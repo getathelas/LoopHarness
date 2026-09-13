@@ -62,11 +62,13 @@ class MainVC: MessagingVC {
         previousTitleView = navigationItem.titleView
         let orb = UIHostingController(rootView: LiveCompactOrb(session: .shared))
         liveOrbController = orb
-        addChild(orb)
+        // The title view lives in UINavigationController's navigation bar.
+        let orbHost = navigationController ?? self
+        orbHost.addChild(orb)
         orb.view.backgroundColor = .clear
         orb.view.frame = CGRect(x: 0, y: 0, width: 44, height: 44)
         navigationItem.titleView = orb.view
-        orb.didMove(toParent: self)
+        orb.didMove(toParent: orbHost)
 
         let controls = UIHostingController(rootView: LiveCallControls(session: .shared, onRetry: { [weak self] in
             guard let self else { return }
@@ -136,6 +138,7 @@ class MainVC: MessagingVC {
     private func dismissLiveChat() {
         LiveSession.shared.stop()
         liveRowsObservation = nil
+        navigationItem.titleView = previousTitleView
         let controllers: [UIViewController?] = [liveOrbController, liveControlsController, liveBorderController]
         for controller in controllers.compactMap({ $0 }) {
             controller.willMove(toParent: nil)
@@ -143,7 +146,6 @@ class MainVC: MessagingVC {
             controller.removeFromParent()
         }
         liveOrbController = nil; liveControlsController = nil; liveBorderController = nil
-        navigationItem.titleView = previousTitleView
         previousTitleView = nil; liveBaseMessages = []
         messageBox.alpha = 1
         messageBox.setInputEnabled(true)

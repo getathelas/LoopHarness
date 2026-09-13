@@ -58,3 +58,5 @@ xcrun swiftc LoopIOS/Live/LiveProtocol.swift /tmp/live-session-tests.swift -o /t
 Checks progressive transcript grouping, stable row IDs, immediate tool activity, replacement with completed results, and exactly-once final persistence. The light/dark native component renders were inspected; full device interaction still needs a spoken-call check.
 
 The iPhone speaking border is a child of the window root controller and is attached inside that controller’s view. A device crash report identified `UIViewControllerHierarchyInconsistency` when the old chat child was attached directly to UIWindow. A native simulator reproduction crashed with the old hierarchy and passed three attach/layout/detach cycles with the corrected hierarchy.
+
+The compact navigation orb belongs to UINavigationController, which owns the navigation bar containing its view. Live console capture identified a second hierarchy exception here; the expanded native reproduction covers both the header orb and screen border and passes repeated open/close cycles after both fixes.
