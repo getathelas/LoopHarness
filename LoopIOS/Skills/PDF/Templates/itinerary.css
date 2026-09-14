@@ -61,8 +61,8 @@ html, body {
 }
 .cover-meta .brand { font-weight: 700; color: #fff; letter-spacing: 0.04em; }
 
-/* WKWebView's createPDF ignores @page margins; horizontal padding
-   here provides the actual content inset on iOS-rendered PDFs. */
+/* Screen-preview insets. PDFPageLayout removes these in print media;
+   the native print pipeline supplies margins on every page. */
 .body { padding: 0.1in 0.75in; }
 
 h2 {

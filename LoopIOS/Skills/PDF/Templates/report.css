@@ -77,10 +77,8 @@ html, body {
 }
 .cover-meta .brand { font-weight: 600; color: #1c1c1e; letter-spacing: 0.02em; }
 
-/* WKWebView's createPDF ignores @page margins, so horizontal
-   padding here is the only reliable content inset. Values match
-   the @page side margins so the result looks correct whether or
-   not the renderer honours @page. */
+/* Screen-preview insets. PDFPageLayout removes these in print media;
+   the native print pipeline supplies margins on every page. */
 .body {
     padding: 0.15in 0.85in;
 }

@@ -63,8 +63,12 @@ version."
    so relative `file://` references resolve. Wait on
    `webView(_:didFinish:)` *and* `document.fonts.ready` (eval'd via JS) so
    neither layout nor typography are mid-flight when we snapshot.
-4. **WKWebView.createPDF(configuration:)** — produces a multi-page,
-   page-aware PDF using the CSS `@page` rules in the template.
+4. **Native WebKit printing** — `UIPrintPageRenderer` with the web view's
+   print formatter on iOS; a silent save-to-PDF `NSPrintOperation` on macOS.
+   `PDFPageLayout` sets Letter paper and repeating template margins in PDF
+   points (72/inch). Print CSS removes screen insets and sizes cover pages
+   to the printable area. `createPDF` is a scrolling snapshot, not a paginated
+   print renderer, and must not be used for document output.
 5. **Save to Workspace** — `Workspace.shared.rootURL/pdfs/{slug}-{date}.pdf`.
 6. **Page-1 thumbnail** via `PDFKit.PDFPage.thumbnail(of:for:)` for the chat
    cell.
