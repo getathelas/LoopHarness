@@ -172,9 +172,11 @@ final class PDFGenerationService: NSObject {
         <html lang="en">
         <head>
             <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
             <title>\(escapedTitle)</title>
             <style>
         \(css)
+        \(PDFPageLayout(template: template).printCSS)
             </style>
         </head>
         <body>
@@ -228,6 +230,9 @@ private final class PDFRenderJob: NSObject, WKNavigationDelegate {
 
     private var webView: WKWebView?
     private var cancelled = false
+#if os(macOS)
+    private var printJob: MacPDFPrintJob?
+#endif
 
     init(attachment: PDFAttachment,
          html: String,
@@ -240,10 +245,8 @@ private final class PDFRenderJob: NSObject, WKNavigationDelegate {
     }
 
     func start() {
-        // Letter page width at 96dpi is 8.5in × 96 = 816pt. WKWebView's
-        // viewport drives layout, so sizing the offscreen frame to the page
-        // width keeps line-breaks and image scaling matched to what
-        // createPDF will produce.
+        // Screen layout uses CSS pixels (96/inch). The print pipeline below
+        // performs pagination separately in PDF points (72/inch).
         let pageWidthPts: CGFloat = 816
         let pageHeightPts: CGFloat = 1056   // 11in × 96dpi
         let frame = CGRect(x: 0, y: 0, width: pageWidthPts, height: pageHeightPts)
@@ -279,9 +282,17 @@ private final class PDFRenderJob: NSObject, WKNavigationDelegate {
         // Wait for fonts to settle so the snapshot doesn't catch a
         // half-loaded webfont. CSS uses bundled system fonts only, so this
         // is mostly insurance against FOUT on slower devices.
-        let waitJS = "document.fonts.ready.then(() => true)"
-        webView.evaluateJavaScript(waitJS) { [weak self] _, _ in
-            self?.capturePDF()
+        webView.callAsyncJavaScript("await document.fonts.ready;", arguments: [:],
+                                    in: nil, in: .page) { [weak self] result in
+            guard let self = self, !self.cancelled else { return }
+            switch result {
+            case .success:
+                // Finish the WebKit callback before entering native print layout.
+                DispatchQueue.main.async { [weak self] in self?.capturePDF() }
+            case .failure(let error):
+                self.completion(.failure(self.attachment,
+                                          "PDF layout failed: \(error.localizedDescription)"))
+            }
         }
     }
 
@@ -297,21 +308,26 @@ private final class PDFRenderJob: NSObject, WKNavigationDelegate {
 
     private func capturePDF() {
         guard !cancelled, let webView = webView else { return }
-        let config = WKPDFConfiguration()
-        // nil rect = use page rules from CSS (which is what we want — the
-        // template specifies @page size and margins, so explicit rect would
-        // override the per-template Letter sizing).
-        config.rect = nil
+        let layout = PDFPageLayout(template: attachment.template)
+#if os(macOS)
+        let job = MacPDFPrintJob()
+        printJob = job
+        job.render(webView, layout: layout) { [weak self] result in
+            guard let self = self else { return }
+            self.printJob = nil
+            guard !self.cancelled else { return }
+            self.finishCapture(result)
+        }
+#else
+        finishCapture(Result { try layout.render(webView) })
+#endif
+    }
 
-        webView.createPDF(configuration: config) { [weak self] result in
-            guard let self = self, !self.cancelled else { return }
-            switch result {
-            case .success(let data):
-                self.persistPDF(data: data)
-            case .failure(let error):
-                self.completion(.failure(self.attachment,
-                                          "PDF capture failed: \(error.localizedDescription)"))
-            }
+    private func finishCapture(_ result: Result<Data, Error>) {
+        switch result {
+        case .success(let data): persistPDF(data: data)
+        case .failure(let error):
+            completion(.failure(attachment, "PDF capture failed: \(error.localizedDescription)"))
         }
     }
 
@@ -442,3 +458,152 @@ private enum PDFRenderOutcome {
     case success(PDFAttachment)
     case failure(PDFAttachment, String)
 }
+
+/// WebKit's createPDF snapshots a scrolling canvas; it does not paginate.
+/// Both native print paths use the same Letter paper and per-page margins.
+struct PDFPageLayout {
+    let paperRect = CGRect(x: 0, y: 0, width: 612, height: 792)
+    let top: CGFloat
+    let side: CGFloat
+    let bottom: CGFloat
+    let hasCover: Bool
+    let coverBackground: String
+
+    init(template: String) {
+        hasCover = template == "report" || template == "itinerary"
+        coverBackground = template == "itinerary" ? "#1b4d7a" : "#fbf9f6"
+        switch template {
+        case "contract": (top, side, bottom) = (72, 79.2, 79.2)
+        case "letter": (top, side, bottom) = (79.2, 72, 79.2)
+        case "notes": (top, side, bottom) = (39.6, 46.8, 54)
+        case "itinerary": (top, side, bottom) = (54, 54, 68.4)
+        default: (top, side, bottom) = (61.2, 61.2, 72)
+        }
+    }
+
+    var printableRect: CGRect {
+        CGRect(x: side, y: top, width: paperRect.width - 2 * side,
+               height: paperRect.height - top - bottom)
+    }
+
+    var printCSS: String {
+        // Native print margins repeat on every page. Remove the old screen
+        // padding and keep CSS page margins in sync with the print geometry.
+        // Zero CSS margins on Mac cause clipping at native page boundaries.
+        // UIKit can scale CSS lengths during printing. Use a compact cover
+        // with room to grow rather than an exact page-height box, which can
+        // overflow and duplicate its last line on a second page.
+        // Solid cover fills avoid Quartz artifacts from transparent gradients.
+        """
+        @media print {
+            @page { size: Letter; margin: \(top)pt \(side)pt \(bottom)pt; }
+            @page :first { margin: \(top)pt \(side)pt \(bottom)pt; }
+            body, .body { padding: 0 !important; }
+            \(hasCover ? ".cover { height: auto; min-height: 6in; padding: 36pt; background: \(coverBackground); }" : "")
+        }
+        """
+    }
+
+    func render(_ webView: WKWebView) throws -> Data {
+#if os(iOS)
+        let renderer = LetterPrintPageRenderer(layout: self)
+        renderer.addPrintFormatter(webView.viewPrintFormatter(), startingAtPageAt: 0)
+        let count = renderer.numberOfPages
+        guard count > 0 else { throw RenderError.noPages }
+        renderer.prepare(forDrawingPages: NSRange(location: 0, length: count))
+        let data = NSMutableData()
+        UIGraphicsBeginPDFContextToData(data, paperRect, nil)
+        for index in 0..<count {
+            UIGraphicsBeginPDFPage()
+            renderer.drawPage(at: index, in: paperRect)
+        }
+        // Close the context before copying its finalized PDF data.
+        UIGraphicsEndPDFContext()
+        return data as Data
+#else
+        throw RenderError.printFailed
+#endif
+    }
+
+    private enum RenderError: LocalizedError {
+        case noPages, printFailed
+        var errorDescription: String? {
+            switch self {
+            case .noPages: return "The document produced no printable pages."
+            case .printFailed: return "The document could not be printed to PDF."
+            }
+        }
+    }
+}
+
+#if os(iOS)
+private final class LetterPrintPageRenderer: UIPrintPageRenderer {
+    private let layout: PDFPageLayout
+    init(layout: PDFPageLayout) {
+        self.layout = layout
+        super.init()
+    }
+    override var paperRect: CGRect { layout.paperRect }
+    override var printableRect: CGRect { layout.printableRect }
+}
+#endif
+
+#if os(macOS)
+/// WebKit computes its page range asynchronously. A synchronous run() can
+/// print an unbounded range before that reply arrives; use the modal API
+/// with a private, never-shown window to keep the main run loop available.
+private final class MacPDFPrintJob: NSObject {
+    private let window = NSWindow(contentRect: .zero, styleMask: [], backing: .buffered, defer: false)
+    private let url = FileManager.default.temporaryDirectory
+        .appendingPathComponent("loop-print-\(UUID().uuidString).pdf")
+    private var operation: NSPrintOperation?
+    // A cancelled render may release its owner while AppKit still prints.
+    private var retainedUntilFinished: MacPDFPrintJob?
+    private var completion: ((Result<Data, Error>) -> Void)?
+
+    func render(_ webView: WKWebView, layout: PDFPageLayout,
+                completion: @escaping (Result<Data, Error>) -> Void) {
+        self.completion = completion
+        retainedUntilFinished = self
+        let info = NSPrintInfo(dictionary: [
+            .jobDisposition: NSPrintInfo.JobDisposition.save,
+            .jobSavingURL: url
+        ])
+        info.paperSize = layout.paperRect.size
+        info.topMargin = layout.top
+        info.bottomMargin = layout.bottom
+        info.leftMargin = layout.side
+        info.rightMargin = layout.side
+        info.isHorizontallyCentered = false
+        info.isVerticallyCentered = false
+        info.horizontalPagination = .fit
+        info.verticalPagination = .automatic
+        let operation = webView.printOperation(with: info)
+        self.operation = operation
+        operation.showsPrintPanel = false
+        operation.showsProgressPanel = false
+        operation.canSpawnSeparateThread = true
+        operation.runModal(for: window, delegate: self,
+                           didRun: #selector(didPrint(_:success:context:)), contextInfo: nil)
+    }
+
+    @objc private func didPrint(_ operation: NSPrintOperation, success: Bool,
+                               context: UnsafeMutableRawPointer?) {
+        DispatchQueue.main.async { [self] in
+            defer { try? FileManager.default.removeItem(at: url) }
+            let result = Result<Data, Error> {
+                guard success else {
+                    throw NSError(domain: "PDFGenerationService", code: 2,
+                                  userInfo: [NSLocalizedDescriptionKey: "The document could not be printed to PDF."])
+                }
+                return try Data(contentsOf: url)
+            }
+            let callback = completion
+            completion = nil
+            self.operation = nil
+            retainedUntilFinished = nil
+            callback?(result)
+        }
+    }
+}
+#endif
