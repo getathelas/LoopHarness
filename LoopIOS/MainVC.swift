@@ -149,7 +149,9 @@ class MainVC: MessagingVC {
                 let changed = currentRows.indices.filter {
                     previousRows[$0].content != currentRows[$0].content ||
                     previousRows[$0].model != currentRows[$0].model ||
-                    previousRows[$0].liveActivity != currentRows[$0].liveActivity
+                    previousRows[$0].liveActivity != currentRows[$0].liveActivity ||
+                    previousRows[$0].pdfAttachment?.status != currentRows[$0].pdfAttachment?.status ||
+                    previousRows[$0].pdfAttachment?.fileURL != currentRows[$0].pdfAttachment?.fileURL
                 }.map { IndexPath(row: $0, section: 0) }
                 if !changed.isEmpty { tableView.reconfigureRows(at: changed) }
             } else { tableView.reloadData() }

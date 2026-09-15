@@ -76,3 +76,9 @@ In Live mode, tap the reasoning card area to expand/collapse it, or tap a tool's
 Existing workspace images shared through `share_file` also appear in Live cards. The attachment is resolved against the current workspace before display; a textual success message alone is not treated as image data. Live instructions require a new share call when the user asks to display an existing image, rather than repeating an earlier tool log.
 
 Live speech deltas reconfigure only changed rows while message IDs are stable, so unrelated image cards are not recreated on every transcript update. Image resources share a bounded cache of decoded images and in-flight loads, independent of table-cell lifetime. A native regression check verified that 100 repeated image-view resource lookups reuse the loaded bitmap even after its source fixture is removed.
+
+## Live PDF generation
+
+iOS `generate_pdf` results are owned by the originating Live request. Placeholders and completed PDFs stay in the Live row stream, so normal chat host creation cannot switch the conversation and stop the call. Completed PDFs carry a persistent file attachment and remain previewable after the call. Late render callbacks update the original conversation without entering a subsequent call; failed renders can be retried.
+
+The two-minute delegated-work timer reports that the task is still running and retains the original request. It does not close the audio session or replay an uncertain tool action. The session regression harness covers slow-work completion, PDF success/failure/retry, late persistence, and same-conversation restart isolation.

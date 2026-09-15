@@ -10,6 +10,7 @@ struct MessageStruct {
  var id = UUID().uuidString
  var role: String; var content: String; var model: String = "Test"; var name: String? = nil; var callId: String? = nil
  var functions: [FunctionCallStruct] = []
+ var pdfAttachment: PDFAttachment? = nil
 }
 struct SimpleConversation { var id = "test-only" }
 extension Notification.Name { static let activeConversationDidChange = Notification.Name("testConversationChange") }
@@ -101,6 +102,8 @@ extension LiveSession {
   try LiveSession.shared.testLiveRows()
   LiveSession.testImageRouting()
   try LiveSession.testGalleryRouting()
+  LiveSession.testPDFRouting()
+  LiveSession.testSlowWork()
  }
 }
 
@@ -225,6 +228,11 @@ extension LiveSession {
 }
 
 struct FileAttachment {
+ init() {}
+ init(id: String, fileURL: URL, fileName: String, kind: Kind, mimeType: String) {
+  self.id = id; self.resolvedFileURL = fileURL; self.fileName = fileName; self.kind = kind
+ }
+
  enum Kind { case image, pdf }
  enum Status { case ready, pending, failed }
  var id = "shared-image"
@@ -233,4 +241,107 @@ struct FileAttachment {
  var status: Status = .ready
  var failureReason: String? = nil
  var resolvedFileURL = URL(fileURLWithPath: "/tmp/example.png")
+}
+
+struct PDFAttachment {
+    enum Status: Equatable {
+        case generating
+        case ready
+        case failed
+    }
+
+    let id: String
+    let title: String
+    let template: String
+    /// Source GFM markdown. Carried on the attachment so a retry from the
+    /// failed-state UI can re-run the same render without round-tripping
+    /// through the model.
+    let document: String
+    var fileURL: URL?
+    var thumbnailURL: URL?
+    var pageCount: Int?
+    var status: Status
+    var failureReason: String?
+    /// Conversation the render belongs to (mirrors `ImageAttachment` for
+    /// multi-tab Mac routing). Optional for single-tab callers.
+    let conversationId: String?
+
+    init(id: String = UUID().uuidString,
+         title: String,
+         template: String,
+         document: String,
+         fileURL: URL? = nil,
+         thumbnailURL: URL? = nil,
+         pageCount: Int? = nil,
+         status: Status = .generating,
+         failureReason: String? = nil,
+         conversationId: String? = nil) {
+        self.id = id
+        self.title = title
+        self.template = template
+        self.document = document
+        self.fileURL = fileURL
+        self.thumbnailURL = thumbnailURL
+        self.pageCount = pageCount
+        self.status = status
+        self.failureReason = failureReason
+        self.conversationId = conversationId
+    }
+}
+
+
+extension LiveSession {
+ static func testPDFRouting() {
+  SimpleConversationManager.shared.saved = []
+  let session = LiveSession(); session.conversation = SimpleConversation(); session.state = .connected
+  let work = UUID(); session.workID = work
+  var request = MessageStruct(id: work.uuidString, role: "assistant", content: "Creating NDA")
+  request.liveActivity = LiveActivityRecord()
+  session.liveMessages = [request]
+  var pdf = PDFAttachment(id: "nda", title: "NDA", template: "contract", document: "Test document")
+  session.registerLivePDF(pdf, requestID: work.uuidString)
+  precondition(session.receiveLivePDF(pdf)) // Suppresses the normal host and its conversation switch.
+  precondition(session.state == .connected && session.liveMessages.count == 2)
+  precondition(session.liveMessages.last?.pdfAttachment?.status == .generating)
+  session.persistTranscript()
+  session.liveMessages = []
+  session.generation = UUID() // Another Live call starts in the same conversation.
+  session.persisted = false
+  pdf.status = .ready; pdf.fileURL = URL(fileURLWithPath: "/tmp/nda.pdf")
+  precondition(session.receiveLivePDF(pdf))
+  let saved = SimpleConversationManager.shared.saved
+  precondition(saved.count == 2 && session.liveMessages.isEmpty)
+  precondition(saved.last?.fileAttachment?.kind == .pdf)
+  precondition(saved.last?.fileAttachment?.resolvedFileURL.path == "/tmp/nda.pdf")
+  precondition(!session.receiveLivePDF(pdf))
+  precondition(!session.receiveLivePDF(PDFAttachment(title: "Other", template: "notes", document: "Unrelated")))
+  let retry = LiveSession(); retry.conversation = SimpleConversation(); retry.state = .connected
+  retry.liveMessages = [request]
+  var failed = PDFAttachment(id: "retry", title: "NDA", template: "contract", document: "Test document")
+  retry.registerLivePDF(failed, requestID: work.uuidString)
+  precondition(retry.receiveLivePDF(failed))
+  failed.status = .failed; failed.failureReason = "Render failed"
+  precondition(retry.receiveLivePDF(failed))
+  precondition(retry.liveMessages.last?.content.contains("Render failed") == true)
+  failed.status = .generating
+  precondition(retry.receiveLivePDF(failed))
+  failed.status = .ready; failed.fileURL = URL(fileURLWithPath: "/tmp/retry.pdf")
+  precondition(retry.receiveLivePDF(failed))
+  precondition(retry.liveMessages.count == 2 && retry.state == .connected)
+  print("PASS: Live PDF placeholder, late durable result, new-call isolation, failure and retry")
+ }
+ static func testSlowWork() {
+  let session = LiveSession(); session.conversation = SimpleConversation(); session.state = .connected
+  let work = UUID(); session.workID = work; session.thinking = true; session.delegations = ["slow"]
+  let before = Cloud.connection.requests
+  session.reportSlowWork(work: work, delegation: "slow")
+  precondition(session.state == .connected && session.workID == work && session.thinking)
+  precondition(session.delegations == ["slow"] && Cloud.connection.requests == before)
+  session.complete("File ready", delegation: "slow", work: work)
+  precondition(session.state == .connected && session.workID == nil && !session.thinking)
+  session.status = "Listening"
+  session.reportSlowWork(work: work, delegation: "slow")
+  precondition(session.status == "Listening")
+  print("PASS: slow work keeps call and request alive, no replay, completion and stale timer handling")
+ }
 }

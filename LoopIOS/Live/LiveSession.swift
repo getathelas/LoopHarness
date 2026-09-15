@@ -32,6 +32,7 @@ final class LiveSession: ObservableObject {
     private var seenDelegations = Set<String>()
     private var delegations: [String] = []
     private var pendingImages: [String: (origin: SimpleConversation, rowID: String, toolID: String, snapshot: MessageStruct)] = [:]
+    private var pendingPDFs: [String: (origin: SimpleConversation, generation: UUID, row: MessageStruct)] = [:]
     private var workID: UUID?
     private var workTimeout: Task<Void, Never>?
     private var history: [MessageStruct] = []
@@ -291,10 +292,20 @@ final class LiveSession: ObservableObject {
         workTimeout = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 120_000_000_000)
             guard !Task.isCancelled, let self = self, self.workID == work else { return }
-            // A tool may still be running. End instead of retrying an uncertain action.
-            self.fail("The task is taking longer than expected. Check its result in Loop before trying it again.")
+            self.reportSlowWork(work: work, delegation: delegation)
         }
         reason(delegation: delegation, work: work, remaining: 12)
+    }
+
+    private func reportSlowWork(work: UUID, delegation: String) {
+        guard state == .connected, workID == work else { return }
+        // Keep ownership of this request: starting another copy could repeat
+        // a file write or another action whose result is still pending.
+        status = "Still working…"
+        AgentActivityLog.shared.log(.status, "Live task is still running after two minutes")
+        for event in LiveProtocol.commentary("The task is still running. I’m keeping it open and will report the result when it finishes.", delegationID: delegation) {
+            send(event)
+        }
     }
 
     private func reason(delegation: String, work: UUID, remaining: Int) {
@@ -400,6 +411,49 @@ final class LiveSession: ObservableObject {
                 self.execute(calls, index: index + 1, delegation: delegation, work: work, remaining: remaining, transcriptCount: transcriptCount)
             }
         }
+    }
+
+    func registerLivePDF(_ attachment: PDFAttachment, requestID: String) {
+        guard let origin = conversation,
+              liveMessages.contains(where: { $0.id == requestID }) else { return }
+        let row = MessageStruct(id: "pdf-" + attachment.id, role: "assistant", content: "",
+                                model: "loop-pdf", pdfAttachment: attachment)
+        pendingPDFs[attachment.id] = (origin, generation, row)
+    }
+
+    /// PDF callbacks must not enter the normal chat host: it can create a
+    /// different conversation and stop Live, and its rows get overwritten by
+    /// the next transcript delta. Keep the artifact in the Live row stream.
+    @discardableResult func receiveLivePDF(_ attachment: PDFAttachment) -> Bool {
+        if pendingPDFs[attachment.id] == nil, attachment.status == .generating,
+           let origin = conversation,
+           let row = liveMessages.first(where: { $0.pdfAttachment?.id == attachment.id }) {
+            pendingPDFs[attachment.id] = (origin, generation, row)
+        }
+        guard let pending = pendingPDFs[attachment.id] else { return false }
+        var row = pending.row
+        row.content = ""
+        row.fileAttachment = nil
+        row.pdfAttachment = attachment
+        if let url = attachment.fileURL, attachment.status == .ready {
+            // FileAttachment is persisted by the conversation store; the
+            // render-only PDFAttachment is retained for preview/retry in memory.
+            row.fileAttachment = FileAttachment(id: attachment.id, fileURL: url,
+                fileName: url.lastPathComponent, kind: .pdf, mimeType: "application/pdf")
+        }
+        if attachment.status == .failed {
+            row.content = "PDF generation failed: " + (attachment.failureReason ?? "Please retry.")
+        }
+        if let index = liveMessages.firstIndex(where: { $0.id == row.id }) { liveMessages[index] = row }
+        else if generation == pending.generation { liveMessages.append(row) }
+        if persisted || generation != pending.generation || conversation?.id != pending.origin.id {
+            let stored = SimpleConversationManager.shared.getMessages(for: pending.origin)
+            if stored.contains(where: { $0.id == row.id }) {
+                SimpleConversationManager.shared.updateMessage(row, in: pending.origin)
+            } else { SimpleConversationManager.shared.addMessage(row, to: pending.origin) }
+        }
+        if attachment.status != .generating { pendingPDFs.removeValue(forKey: attachment.id) }
+        return true
     }
 
     func registerLiveImage(_ attachment: ImageAttachment, requestID: String) {
