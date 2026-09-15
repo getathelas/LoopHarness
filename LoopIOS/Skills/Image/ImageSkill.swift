@@ -141,7 +141,7 @@ Rules:
                 return
             }
             let aspect = (functionCall.arguments["aspect_ratio"] as? String) ?? ImageSkill.defaultAspect
-            generateImage(prompt: prompt, aspect: aspect, completion: completion)
+            generateImage(prompt: prompt, aspect: aspect, conversationId: functionCall.conversationId, liveRequestID: functionCall.liveRequestID, completion: completion)
         default:
             completion(MessageStruct(
                 role: "assistant",
@@ -159,17 +159,20 @@ Rules:
     /// the function result here is just to unblock the chat turn.
     private func generateImage(prompt: String,
                                aspect: String,
+                               conversationId: String?,
+                               liveRequestID: String?,
                                completion: @escaping (MessageStruct) -> Void) {
         // Pin this generation to whichever conversation is currently active
         // *now*, not whichever one happens to be foreground when the network
         // call finishes. Without this, the user can open a new tab while an
         // image is in flight and the bubble would race into the wrong tab on
         // Mac. The service carries the id through to the host callbacks.
-        let convId = SimpleConversationManager.shared.currentConversation?.id
+        let convId = conversationId ?? SimpleConversationManager.shared.currentConversation?.id
         let size = ImageSkill.apiSize(forAspect: aspect)
         let attachment = ImageGenerationService.shared.submit(prompt: prompt,
                                                               size: size,
                                                               conversationId: convId)
+        if let liveRequestID { LiveSession.shared.registerLiveImage(attachment, requestID: liveRequestID) }
         let summary = "Image generation queued (id: \(attachment.id)). Image will appear inline in the chat shortly. Acknowledge briefly to the user; do not wait for the image."
         completion(MessageStruct(
             role: "function",

@@ -6,6 +6,7 @@
 //
 
 import UIKit
+import SwiftUI
 import AVFoundation
 import FoundationModels
 import QuickLook
@@ -167,7 +168,9 @@ When the user asks how you work, what you can do, or how you're built, read `ABO
     
     override var navigationController: UINavigationController? {
         get {
-            self.parent?.navigationController
+            // A navigation controller's own navigationController is nil.
+            // Preserve UIKit's lookup for direct and nested chat containers.
+            (parent as? UINavigationController) ?? super.navigationController
         }
     }
     // Side drawer
@@ -376,6 +379,34 @@ When the user asks how you work, what you can do, or how you're built, read `ABO
     /// Message ids whose "Used N tools" disclosure is currently expanded.
     /// Toggled by tapping the disclosure header; consulted in `cellForRowAt`.
     private var expandedToolMessageIds = Set<String>()
+    private var liveActivityExpansion: [String: Bool] = [:]
+    private var liveToolExpansion: [String: Set<String>] = [:]
+    var isInspectingLiveActivity: Bool {
+        visible_messages.contains { message in
+            liveActivityExpansion[message.id] == true || !(liveToolExpansion[message.id] ?? []).isEmpty
+        }
+    }
+    func liveInspectionDidChange() {}
+
+    private func toggleLiveDetails(messageID: String, expanded: Bool, toolID: String? = nil) {
+        let offset = tableView.contentOffset
+        if let toolID {
+            var tools = liveToolExpansion[messageID] ?? []
+            if !tools.insert(toolID).inserted { tools.remove(toolID) }
+            liveToolExpansion[messageID] = tools
+            // Explicit inspection must survive the model marking this card spoken.
+            liveActivityExpansion[messageID] = true
+        } else {
+            liveActivityExpansion[messageID] = !expanded
+            if expanded { liveToolExpansion[messageID] = [] }
+        }
+        UIView.performWithoutAnimation {
+            liveInspectionDidChange()
+            tableView.reloadData()
+            tableView.layoutIfNeeded()
+            tableView.setContentOffset(offset, animated: false)
+        }
+    }
 
     var visible_messages: [MessageStruct] {
         let filtered = self.messages.filter({
@@ -3460,6 +3491,22 @@ extension MessagingVC: UITableViewDelegate, UITableViewDataSource {
     }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        if indexPath.row < visible_messages.count {
+            let message = visible_messages[indexPath.row]
+            if let activity = message.liveActivity {
+                let cell = tableView.dequeueReusableCell(withIdentifier: "liveActivity") ?? UITableViewCell(style: .default, reuseIdentifier: "liveActivity")
+                let expanded = liveActivityExpansion[message.id] ?? activity.defaultExpanded
+                cell.backgroundColor = .clear; cell.selectionStyle = .none
+                cell.contentConfiguration = UIHostingConfiguration {
+                    LiveReasoningCard(activity: activity, model: message.model, expanded: expanded, toggle: { [weak self] in
+                        self?.toggleLiveDetails(messageID: message.id, expanded: expanded)
+                    }, expandedTools: self.liveToolExpansion[message.id] ?? [], toggleTool: { [weak self] toolID in
+                        self?.toggleLiveDetails(messageID: message.id, expanded: expanded, toolID: toolID)
+                    })
+                }.margins(.horizontal, 16).margins(.vertical, 8)
+                return cell
+            }
+        }
         if indexPath.row == self.visible_messages.count {
             let cell = tableView.dequeueReusableCell(withIdentifier: "cell", for: indexPath) as! MessagingCell
             // While streaming, this trailing row shows the partial assistant
