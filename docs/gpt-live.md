@@ -82,3 +82,15 @@ Live speech deltas reconfigure only changed rows while message IDs are stable, s
 iOS `generate_pdf` results are owned by the originating Live request. Placeholders and completed PDFs stay in the Live row stream, so normal chat host creation cannot switch the conversation and stop the call. Completed PDFs carry a persistent file attachment and remain previewable after the call. Late render callbacks update the original conversation without entering a subsequent call; failed renders can be retried.
 
 The two-minute delegated-work timer reports that the task is still running and retains the original request. It does not close the audio session or replay an uncertain tool action. The session regression harness covers slow-work completion, PDF success/failure/retry, late persistence, and same-conversation restart isolation.
+
+## Music during Live
+
+Live uses a mixable iOS play-and-record audio session and voice-processing advanced ducking at the medium level. Music remains playing while speech temporarily lowers its volume. The legacy voice loop's automatic pause/resume logic does not take over an active Live call; explicit music pause/stop still works. Ending Live releases microphone use without deactivating a playing ApplicationMusicPlayer.
+
+Native offline regression (Apple Silicon Mac, already-booted iOS simulator):
+
+```sh
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer python3 scripts/test_live_music_ios.py SIMULATOR_UDID
+```
+
+This test plays a quiet generated tone with AVAudioPlayer alongside the real LiveAudio engine, checks capture continues, and pauses/resumes the tone. Microphone samples are discarded. It validates local audio coexistence, not Apple Music subscription playback or a real GPT Live conversation. Hardware check: start Live, request music, ask a follow-up over the music, pause/resume music, and end Live while music is playing. Confirm the call stays connected, speech is audible, explicit playback controls work, and music continues after End.

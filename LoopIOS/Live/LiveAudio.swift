@@ -1,4 +1,7 @@
 import AVFoundation
+#if os(iOS)
+import MusicKit
+#endif
 
 /// Native PCM transport using voice processing for full-duplex echo cancellation.
 final class LiveAudio {
@@ -14,7 +17,7 @@ final class LiveAudio {
     func start() throws {
         #if os(iOS)
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetoothHFP])
+        try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetoothHFP, .mixWithOthers])
         try session.setActive(true)
         #endif
         let engine = AVAudioEngine()
@@ -26,6 +29,12 @@ final class LiveAudio {
         // That audio unit requires identical client-side capture/playback formats.
         _ = engine.outputNode
         try engine.inputNode.setVoiceProcessingEnabled(true)
+        // Keep background music audible between utterances. Voice processing
+        // ducks it when either participant speaks, without pausing its queue.
+        if #available(iOS 17.0, macOS 14.0, *) {
+            engine.inputNode.voiceProcessingOtherAudioDuckingConfiguration = .init(
+                enableAdvancedDucking: true, duckingLevel: .mid)
+        }
         // VoiceProcessingIO can expose aggregate microphone/reference channels.
         // Negotiate a mono client stream instead of downmixing that aggregate,
         // which can deliver silent capture even though the engine starts.
@@ -103,7 +112,14 @@ final class LiveAudio {
         }
         player?.stop(); player = nil; engine = nil; queuedFrames = 0
         #if os(iOS)
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        let session = AVAudioSession.sharedInstance()
+        if ApplicationMusicPlayer.shared.state.playbackStatus == .playing {
+            // Live and MusicKit share the app's audio session. Release the
+            // microphone without deactivating the music the user requested.
+            try? session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+        } else {
+            try? session.setActive(false, options: .notifyOthersOnDeactivation)
+        }
         #endif
     }
 }
