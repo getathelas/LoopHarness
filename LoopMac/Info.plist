@@ -22,7 +22,7 @@
 	<key>LSUIElement</key>
 	<false/>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Loop records your voice when you hold shift + control so it can transcribe and send it to the assistant.</string>
+	<string>Loop uses your microphone for voice messages and live conversations.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Loop transcribes your speech when you hold shift + control so the assistant can hear what you say.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>

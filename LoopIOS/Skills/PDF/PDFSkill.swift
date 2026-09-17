@@ -162,6 +162,8 @@ Rules:
             generatePDF(title: title,
                         document: document,
                         template: template,
+                        conversationId: functionCall.conversationId,
+                        liveRequestID: functionCall.liveRequestID,
                         completion: completion)
         default:
             completion(MessageStruct(
@@ -180,15 +182,20 @@ Rules:
     private func generatePDF(title: String,
                              document: String,
                              template: String,
+                             conversationId: String?,
+                             liveRequestID: String?,
                              completion: @escaping (MessageStruct) -> Void) {
         // Pin the render to whichever conversation is active *now* so a
         // tab-switch between submit and finish doesn't drop the bubble in
         // the wrong place on multi-tab Mac.
-        let convId = SimpleConversationManager.shared.currentConversation?.id
+        let convId = conversationId ?? SimpleConversationManager.shared.currentConversation?.id
         let attachment = PDFGenerationService.shared.submit(title: title,
                                                              document: document,
                                                              template: template,
                                                              conversationId: convId)
+        #if os(iOS)
+        if let liveRequestID { LiveSession.shared.registerLivePDF(attachment, requestID: liveRequestID) }
+        #endif
         let summary = "PDF generation queued (id: \(attachment.id), template: \(template)). The PDF will appear inline shortly. Acknowledge briefly to the user; do not wait for the file."
         completion(MessageStruct(
             role: "function",

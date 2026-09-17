@@ -98,7 +98,7 @@ final class KeyStore {
             case .deepgram:               return "Streaming STT + Aura TTS"
             case .elevenLabs:             return "Expressive TTS voices"
             case .exa:                    return "Web search + answer skill"
-            case .openAI:                 return "Image generation + OpenAI TTS, and GPT models for the agent"
+            case .openAI:                 return "GPT Live voice, image generation, OpenAI TTS, and GPT models for the agent"
             case .anthropic:              return "Claude models for the agent"
             case .bedrock:                return "Claude Opus models through Amazon Bedrock"
             case .bedrockRegion:          return "Optional Bedrock Mantle region · defaults to us-east-1"
@@ -176,7 +176,7 @@ final class KeyStore {
         /// `Key.subtitle` and is shown beside the matching input row.
         var summary: String {
             switch self {
-            case .openAI:     return "Image generation, OpenAI TTS, and GPT models for the agent"
+            case .openAI:     return "GPT Live voice, image generation, OpenAI TTS, and GPT models for the agent"
             case .anthropic:  return "Claude models for the agent"
             case .bedrock:    return "Claude Opus models via Bedrock Mantle using your Amazon Bedrock API key"
             case .fireworks:  return "Fireworks inference platform — run Kimi K2.6 and other open models via Fireworks"
