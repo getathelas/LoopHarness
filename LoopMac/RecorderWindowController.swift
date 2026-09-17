@@ -8,6 +8,8 @@
 //
 
 import AppKit
+import SwiftUI
+import Combine
 
 final class RecorderWindowController: NSWindowController, NSTextFieldDelegate, NSWindowDelegate {
     /// The coordinator the recorder bar is currently bound to. Mutable so the
@@ -21,6 +23,15 @@ final class RecorderWindowController: NSWindowController, NSTextFieldDelegate, N
     // creature.
     private let avatarView = AvatarView(gridW: 9, gridH: 9, pixelSize: 4, baseRadius: 1.5)
     private let textField = NSTextField()
+    private let liveButton = NSButton()
+    var onStartLiveChat: (() -> Void)?
+    private var liveStateObservation: AnyCancellable?
+
+    @objc private func startLiveChat() {
+        guard coordinator.state == .idle, !LiveSession.shared.isActive else { return }
+        onStartLiveChat?()
+    }
+
     private let placeholderLabel = NSTextField(labelWithString: "")
     private let sendButton = CircleButton(diameter: 36)
     private let waveformContainer = NSView()
@@ -124,6 +135,12 @@ final class RecorderWindowController: NSWindowController, NSTextFieldDelegate, N
         positionAtBottomCenter()
         wireCoordinator()
         wireVisibilityObservers()
+        liveStateObservation = LiveSession.shared.$state.receive(on: DispatchQueue.main).sink { [weak self] _ in
+            guard let self else { return }
+            self.textField.isEnabled = !LiveSession.shared.isActive
+            self.sendButton.isHidden = LiveSession.shared.isActive
+            self.updateSendButtonAppearance()
+        }
         // Start hidden — the bar surfaces on ctrl+fn or when the user
         // explicitly activates Loop.
         panel.orderOut(nil)
@@ -178,6 +195,20 @@ final class RecorderWindowController: NSWindowController, NSTextFieldDelegate, N
         textField.lineBreakMode = .byWordWrapping
         textField.placeholderAttributedString = makePlaceholder()
         contentView.addSubview(textField)
+        liveButton.translatesAutoresizingMaskIntoConstraints = false
+        liveButton.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "Start live chat")
+        liveButton.isBordered = false
+        liveButton.toolTip = "Start live chat"
+        liveButton.setAccessibilityLabel("Start live chat")
+        liveButton.target = self; liveButton.action = #selector(startLiveChat)
+        contentView.addSubview(liveButton)
+        contentView.addSubview(sendButton)
+        NSLayoutConstraint.activate([
+            liveButton.trailingAnchor.constraint(equalTo: sendButton.leadingAnchor, constant: -4),
+            liveButton.centerYAnchor.constraint(equalTo: sendButton.centerYAnchor),
+            liveButton.widthAnchor.constraint(equalToConstant: 36),
+            liveButton.heightAnchor.constraint(equalToConstant: 36)
+        ])
 
         // Send button — `CircleButton` is now a plain NSView with an
         // NSImageView subview, so it cannot drift into a pill the way the
@@ -231,7 +262,7 @@ final class RecorderWindowController: NSWindowController, NSTextFieldDelegate, N
             // (gridW * pixelSize), so no explicit size constraints needed.
 
             textField.leadingAnchor.constraint(equalTo: avatarView.trailingAnchor, constant: 12),
-            textField.trailingAnchor.constraint(equalTo: sendButton.leadingAnchor, constant: -12),
+            textField.trailingAnchor.constraint(equalTo: liveButton.leadingAnchor, constant: -8),
             // Pin the text field's last line to the same baseline as the
             // avatar/send button, and grow its top edge upward via an
             // explicit height constraint that's resized in
@@ -617,6 +648,8 @@ final class RecorderWindowController: NSWindowController, NSTextFieldDelegate, N
     }
 
     private func applyState(_ state: VoiceLoopCoordinator.State) {
+        liveButton.isHidden = state != .idle || LiveSession.shared.isActive
+        if LiveSession.shared.isActive { return }
         switch state {
         case .idle:
             textField.isEnabled = true
@@ -828,6 +861,7 @@ final class RecorderWindowController: NSWindowController, NSTextFieldDelegate, N
         // when the text field is empty — same rule as the iOS message bar.
         let hasAttachment = pendingAttachment != nil
         let shouldSend = hasText || hasAttachment
+        liveButton.isHidden = shouldSend || LiveSession.shared.isActive
 
         // When there's nothing to send the button doubles as the attach
         // affordance — tap to open a file panel. Mirrors iOS, where the

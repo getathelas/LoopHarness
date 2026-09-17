@@ -506,6 +506,9 @@ final class MusicController {
     /// next state change), but calling this explicitly avoids the async
     /// latency of the NotificationCenter round-trip.
     func duckForVoiceSession() {
+        // Live has continuous capture; use its native speech ducking instead
+        // of the turn-based voice loop's pause/resume cycle.
+        guard !LiveSession.shared.isActive else { return }
         guard player.state.playbackStatus == .playing else { return }
         player.pause()
         pauseReason = .duckRecording
@@ -545,6 +548,9 @@ final class MusicController {
     /// `setMusicMood()` call made mid-turn doesn't bleed audio. The new
     /// track stays queued and becomes the resume target when the turn ends.
     private func reduckIfVoiceSessionActive() {
+        // Live has continuous capture; use its native speech ducking instead
+        // of the turn-based voice loop's pause/resume cycle.
+        guard !LiveSession.shared.isActive else { return }
         #if os(macOS)
         let voiceState = VoiceLoopCoordinator.current?.state ?? .idle
         #else
@@ -704,6 +710,9 @@ final class MusicController {
     }
 
     private func handleVoiceLoopState() {
+        // Live has continuous capture; use its native speech ducking instead
+        // of the turn-based voice loop's pause/resume cycle.
+        guard !LiveSession.shared.isActive else { return }
         #if os(macOS)
         guard let coordinator = VoiceLoopCoordinator.current else { return }
         let state = coordinator.state

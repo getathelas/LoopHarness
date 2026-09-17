@@ -927,7 +927,7 @@ private struct MessageLineEnvelope: Encodable {
     let message: SimpleMessage
 
     private enum CodingKeys: String, CodingKey {
-        case _type, id, role, content, name, functionName, functionArguments, actions, fileAttachment, imageAttachment, createdAt
+        case _type, id, role, content, name, functionName, functionArguments, actions, fileAttachment, imageAttachment, createdAt, model, liveActivity
     }
 
     func encode(to encoder: Encoder) throws {
@@ -943,6 +943,8 @@ private struct MessageLineEnvelope: Encodable {
         try c.encodeIfPresent(message.fileAttachment, forKey: .fileAttachment)
         try c.encodeIfPresent(message.imageAttachment, forKey: .imageAttachment)
         try c.encode(message.createdAt, forKey: .createdAt)
+        try c.encodeIfPresent(message.model, forKey: .model)
+        try c.encodeIfPresent(message.liveActivity, forKey: .liveActivity)
     }
 }
 

@@ -57,6 +57,7 @@ struct Conversation {
 }
 
 struct FunctionCallStruct {
+    var liveRequestID: String? = nil
     var name: String
     var arguments: [String: Any]
     /// Provider-issued id for this call. Anthropic returns it as `tool_use.id`;
@@ -93,6 +94,7 @@ struct TokenUsage {
 }
 
 struct MessageStruct {
+    var liveActivity: LiveActivityRecord? = nil
     var id: String = UUID().uuidString
     var role: String
     var content: String
