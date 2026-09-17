@@ -10,6 +10,8 @@
 import AppKit
 import PDFKit
 import MapKit
+import SwiftUI
+import Combine
 
 final class ConversationWindowController: NSWindowController, ConversationPresenter, NSToolbarDelegate, TabBarViewDelegate {
     /// Open tabs in display order. Index 0 is the leftmost cell; the active
@@ -54,6 +56,14 @@ final class ConversationWindowController: NSWindowController, ConversationPresen
     /// the scroll view. Hides itself when no agents are alive.
     private let subAgentStatusBar = SubAgentMacStatusBar()
     private var hasShown = false
+    private var liveObservations = Set<AnyCancellable>()
+    private var liveControls: NSHostingView<LiveCallControls>?
+    private var liveUIConversationID: String?
+    private let liveFooter = NSStackView()
+    private let startLiveButton = NSButton(title: "Start live chat", target: nil, action: nil)
+    private var liveRowViews: [String: NSView] = [:]
+    private var liveRowSnapshots: [String: MessageStruct] = [:]
+
 
     /// Left-hand conversation list. Owned here, hosted inside the window's
     /// NSSplitViewController so the standard toolbar `.toggleSidebar` button
@@ -163,6 +173,12 @@ final class ConversationWindowController: NSWindowController, ConversationPresen
         tabBarView.delegate = self
         refreshTabBar()
         reloadFromStore()
+        recorder.onStartLiveChat = { [weak self] in self?.startLiveChat() }
+        LiveSession.shared.$liveMessages
+            .throttle(for: .milliseconds(150), scheduler: RunLoop.main, latest: true)
+            .sink { [weak self] rows in self?.renderLiveRows(rows) }
+            .store(in: &liveObservations)
+
 
         // Hook the shared onboarding coordinator. On Mac we skip the iOS
         // action-button step (no Action Button hardware to bind). The
@@ -298,6 +314,14 @@ final class ConversationWindowController: NSWindowController, ConversationPresen
         thinkingLabel.textColor = .tertiaryLabelColor
         thinkingLabel.stringValue = Self.recordHintText
         content.addSubview(thinkingLabel)
+        liveFooter.orientation = .vertical
+        liveFooter.alignment = .centerX
+        liveFooter.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(liveFooter)
+        startLiveButton.target = self
+        startLiveButton.action = #selector(startLiveChat)
+        startLiveButton.bezelStyle = .rounded
+        liveFooter.addArrangedSubview(startLiveButton)
 
         NSLayoutConstraint.activate([
             // Tab bar — pinned 36pt below the raw content top so it sits
@@ -335,7 +359,10 @@ final class ConversationWindowController: NSWindowController, ConversationPresen
             documentView.widthAnchor.constraint(equalTo: scrollView.widthAnchor),
 
             thinkingLabel.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16),
-            thinkingLabel.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -10),
+            thinkingLabel.bottomAnchor.constraint(equalTo: liveFooter.topAnchor, constant: -4),
+            liveFooter.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16),
+            liveFooter.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -16),
+            liveFooter.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -10),
         ])
 
         // Stash for `configureSplitView` to mount inside the right pane.
@@ -867,6 +894,9 @@ final class ConversationWindowController: NSWindowController, ConversationPresen
     }
 
     func reloadFromStore() {
+        if liveUIConversationID != nil, liveUIConversationID != activeTab?.conversation.id {
+            dismissLiveControls()
+        }
         let manager = SimpleConversationManager.shared
         // Anchor on the active tab's conversation rather than the manager's
         // global pointer — with multiple tabs alive, "current" follows the
@@ -890,7 +920,10 @@ final class ConversationWindowController: NSWindowController, ConversationPresen
             manager.currentConversation = refreshed
         }
         let messages = manager.getMessages(for: conv)
-        rebuild(messages: messages)
+        let liveRows = LiveSession.shared.conversationID == conv.id ? LiveSession.shared.liveMessages : []
+        let liveIDs = Set(liveRows.map(\.id))
+        rebuild(messages: messages.filter { !liveIDs.contains($0.id) })
+        renderLiveRows(liveRows)
         // Keep the sidebar in lock-step: pull fresh metadata so the row's
         // snippet + relative-time label reflect the just-appended message,
         // and highlight whichever conversation is now live.
@@ -900,6 +933,8 @@ final class ConversationWindowController: NSWindowController, ConversationPresen
     }
 
     private func rebuild(messages: [SimpleMessage]) {
+        liveRowViews.removeAll()
+        liveRowSnapshots.removeAll()
         for view in stack.arrangedSubviews { stack.removeArrangedSubview(view); view.removeFromSuperview() }
         streamingAssistantRow = nil
         streamingAssistantTextView = nil
@@ -1011,6 +1046,8 @@ final class ConversationWindowController: NSWindowController, ConversationPresen
                             MacOnboardingChipBubble.makeBubble(text: message.content,
                                                               card: card,
                                                               delegate: self))
+                    } else if m.liveActivity != nil {
+                        stack.addArrangedSubview(makeLiveRow(m))
                     } else if let attachment = m.fileAttachment {
                         stack.addArrangedSubview(makeAttachmentBubble(attachment: attachment,
                                                                        text: m.content,
@@ -1053,6 +1090,106 @@ final class ConversationWindowController: NSWindowController, ConversationPresen
                                      model: tab.streamingAssistantModel ?? ModelSelectionStore.current.stampedMessageModel)
         }
         scrollToBottom()
+    }
+
+    @objc private func startLiveChat() {
+        guard activeCoordinator?.state == .idle, !LiveSession.shared.isActive else { return }
+        reloadFromStore()
+        liveUIConversationID = activeTab?.conversation.id
+        if liveControls == nil {
+            let controls = NSHostingView(rootView: LiveCallControls(session: .shared,
+                onRetry: { [weak self] in self?.startLiveChat() },
+                onClose: { [weak self] in
+                    LiveSession.shared.stop()
+                    self?.dismissLiveControls()
+                    self?.reloadFromStore()
+                }))
+            controls.translatesAutoresizingMaskIntoConstraints = false
+            liveFooter.addArrangedSubview(controls)
+            controls.widthAnchor.constraint(equalTo: liveFooter.widthAnchor).isActive = true
+            liveControls = controls
+        }
+        startLiveButton.isHidden = true
+        showAndReload()
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        LiveSession.shared.start()
+        // A retry clears the previous stream; those rows now come from the store.
+        reloadFromStore()
+    }
+
+    private func dismissLiveControls() {
+        if let controls = liveControls {
+            liveFooter.removeArrangedSubview(controls)
+            controls.removeFromSuperview()
+        }
+        liveControls = nil
+        liveUIConversationID = nil
+        startLiveButton.isHidden = false
+    }
+
+    /// Update only changed Live rows. Older messages and expanded cards retain
+    /// their views, and reading history never forces the scroll back to speech.
+    private func renderLiveRows(_ rows: [MessageStruct]) {
+        guard LiveSession.shared.conversationID == activeTab?.conversation.id else { return }
+        let clip = scrollView.contentView
+        let offset = clip.bounds.origin
+        let nearBottom = clip.bounds.maxY >= (scrollView.documentView?.bounds.height ?? 0) - 100
+        let visibleAnchor = stack.arrangedSubviews.first { $0.frame.maxY >= offset.y }
+        let anchorY = visibleAnchor.map { $0.frame.minY - offset.y }
+        let ids = Set(rows.map(\.id))
+        for id in Array(liveRowViews.keys) where !ids.contains(id) {
+            if let view = liveRowViews.removeValue(forKey: id) {
+                stack.removeArrangedSubview(view); view.removeFromSuperview()
+            }
+            liveRowSnapshots.removeValue(forKey: id)
+        }
+        for row in rows where row.role == "user" || row.role == "assistant" || row.fileAttachment != nil {
+            if let old = liveRowSnapshots[row.id], old.content == row.content,
+               old.liveActivity == row.liveActivity,
+               old.pdfAttachment?.status == row.pdfAttachment?.status,
+               old.pdfAttachment?.fileURL == row.pdfAttachment?.fileURL { continue }
+            if let existing = liveRowViews[row.id] as? NSHostingView<MacLiveActivityRow>, let activity = row.liveActivity {
+                existing.rootView = MacLiveActivityRow(activity: activity, model: row.model)
+            } else {
+                let view = makeLiveRow(row)
+                if let old = liveRowViews[row.id], let index = stack.arrangedSubviews.firstIndex(of: old) {
+                    stack.removeArrangedSubview(old); old.removeFromSuperview()
+                    stack.insertArrangedSubview(view, at: index)
+                } else { stack.addArrangedSubview(view) }
+                liveRowViews[row.id] = view
+            }
+            liveRowSnapshots[row.id] = row
+        }
+        scrollView.documentView?.layoutSubtreeIfNeeded()
+        if nearBottom { scrollToBottom() }
+        else {
+            let y = visibleAnchor.flatMap { anchor in
+                anchor.superview == nil ? nil : anchorY.map { anchor.frame.minY - $0 }
+            } ?? offset.y
+            clip.scroll(to: NSPoint(x: offset.x, y: y))
+            scrollView.reflectScrolledClipView(clip)
+        }
+    }
+
+    private func makeLiveRow(_ message: MessageStruct) -> NSView {
+        if let activity = message.liveActivity {
+            let view = NSHostingView(rootView: MacLiveActivityRow(activity: activity, model: message.model))
+            view.translatesAutoresizingMaskIntoConstraints = false
+            view.widthAnchor.constraint(equalToConstant:  min(460, max(240, scrollView.bounds.width - 32))).isActive = true
+            return view
+        }
+        if let pdf = message.pdfAttachment {
+            return makePDFRow(bubbleView: PDFBubbleView(attachment: pdf,
+                onPreview: { [weak self] in self?.previewPDF(attachment: $0) },
+                onShare: { [weak self] in self?.sharePDF(attachment: $0, from: $1) },
+                onRetry: { [weak self] in self?.retryPDF(attachment: $0) }))
+        }
+        if let file = message.fileAttachment {
+            return makeAttachmentBubble(attachment: file, text: message.content, role: message.role)
+        }
+        return makeBubble(role: message.role, text: message.content,
+                          model: message.role == "assistant" ? modelText(for: message) : nil)
     }
 
     private func retryImage(attachment: ImageAttachment) {
@@ -3756,5 +3893,22 @@ extension ConversationWindowController: TwitterSkillHost {
         } else {
             completion(alert.runModal() == .alertFirstButtonReturn)
         }
+    }
+}
+
+/// SwiftUI preserves disclosure state while AppKit updates this row's content.
+private struct MacLiveActivityRow: View {
+    let activity: LiveActivityRecord
+    let model: String
+    @State private var expanded = false
+    @State private var expandedTools: Set<String> = []
+
+    var body: some View {
+        LiveReasoningCard(activity: activity, model: model, expanded: expanded,
+            toggle: { expanded.toggle() }, expandedTools: expandedTools,
+            toggleTool: { id in
+                if expandedTools.contains(id) { expandedTools.remove(id) }
+                else { expandedTools.insert(id) }
+            })
     }
 }

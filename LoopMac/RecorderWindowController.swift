@@ -24,31 +24,12 @@ final class RecorderWindowController: NSWindowController, NSTextFieldDelegate, N
     private let avatarView = AvatarView(gridW: 9, gridH: 9, pixelSize: 4, baseRadius: 1.5)
     private let textField = NSTextField()
     private let liveButton = NSButton()
-    private var livePanel: NSPanel?
+    var onStartLiveChat: (() -> Void)?
     private var liveStateObservation: AnyCancellable?
 
     @objc private func startLiveChat() {
         guard coordinator.state == .idle, !LiveSession.shared.isActive else { return }
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 350, height: 430),
-                            styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        panel.isOpaque = false; panel.backgroundColor = .clear
-        panel.level = .floating; panel.hidesOnDeactivate = false
-        panel.isMovableByWindowBackground = true
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.contentView = NSHostingView(rootView: LiveOrbView(session: .shared) { [weak self] in
-            self?.livePanel?.orderOut(nil); self?.livePanel = nil
-            self?.textField.isEnabled = true
-            self?.sendButton.isHidden = false
-            self?.updateSendButtonAppearance()
-            self?.coordinator.conversationPresenter?.showAndReload()
-        })
-        if let frame = window?.frame {
-            panel.setFrameOrigin(NSPoint(x: frame.midX - 175, y: frame.maxY + 12))
-        } else { panel.center() }
-        livePanel = panel
-        textField.isEnabled = false; sendButton.isHidden = true; liveButton.isHidden = true
-        panel.orderFrontRegardless()
-        LiveSession.shared.start()
+        onStartLiveChat?()
     }
 
     private let placeholderLabel = NSTextField(labelWithString: "")
@@ -155,7 +136,10 @@ final class RecorderWindowController: NSWindowController, NSTextFieldDelegate, N
         wireCoordinator()
         wireVisibilityObservers()
         liveStateObservation = LiveSession.shared.$state.receive(on: DispatchQueue.main).sink { [weak self] _ in
-            self?.updateSendButtonAppearance()
+            guard let self else { return }
+            self.textField.isEnabled = !LiveSession.shared.isActive
+            self.sendButton.isHidden = LiveSession.shared.isActive
+            self.updateSendButtonAppearance()
         }
         // Start hidden — the bar surfaces on ctrl+fn or when the user
         // explicitly activates Loop.
@@ -877,7 +861,7 @@ final class RecorderWindowController: NSWindowController, NSTextFieldDelegate, N
         // when the text field is empty — same rule as the iOS message bar.
         let hasAttachment = pendingAttachment != nil
         let shouldSend = hasText || hasAttachment
-        liveButton.isHidden = shouldSend || LiveSession.shared.isActive || livePanel != nil
+        liveButton.isHidden = shouldSend || LiveSession.shared.isActive
 
         // When there's nothing to send the button doubles as the attach
         // affordance — tap to open a file panel. Mirrors iOS, where the

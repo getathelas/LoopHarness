@@ -94,3 +94,24 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer python3 scripts/test_li
 ```
 
 This test plays a quiet generated tone with AVAudioPlayer alongside the real LiveAudio engine, checks capture continues, and pauses/resumes the tone. Microphone samples are discarded. It validates local audio coexistence, not Apple Music subscription playback or a real GPT Live conversation. Hardware check: start Live, request music, ask a follow-up over the music, pause/resume music, and end Live while music is playing. Confirm the call stays connected, speech is audible, explicit playback controls work, and music continues after End.
+
+## Mac conversation integration
+
+On macOS, Start live chat opens the conversation window and places mute, status,
+retry, and End controls beneath the chat. Speech updates appear as user and
+assistant messages alongside earlier history. Unchanged rows retain their views;
+a reader scrolled into history is not automatically pulled to the newest speech.
+Reasoning cards use the shared disclosure UI. Ending a call preserves its rows,
+and a store reload reconciles them by ID to avoid duplicate messages. Switching
+conversations ends the originating call through the shared session lifecycle.
+
+Run the native Mac rendering regression without network or user storage:
+
+```sh
+python3 scripts/test_mac_live_rows.py
+```
+
+This extracts the production row updater into an AppKit fixture and checks history
+retention, delta replacement, unchanged-row identity, scroll-follow decisions,
+conversation isolation, and removal of stale rows. The session regression above
+covers stable transcript IDs and final persistence.
