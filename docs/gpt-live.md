@@ -51,7 +51,7 @@ The test concatenates an extension after the real session implementation to exer
 
 ```sh
 cat LoopIOS/Live/LiveSession.swift scripts/test_live_session.swift > /tmp/live-session-tests.swift
-xcrun swiftc LoopIOS/Live/LiveEarcon.swift LoopIOS/Live/LiveProtocol.swift /tmp/live-session-tests.swift -o /tmp/live-session-tests
+xcrun swiftc LoopIOS/Live/LiveConnection.swift LoopIOS/Live/LiveEarcon.swift LoopIOS/Live/LiveProtocol.swift /tmp/live-session-tests.swift -o /tmp/live-session-tests
 /tmp/live-session-tests
 ```
 
@@ -119,3 +119,45 @@ xcrun swiftc LoopIOS/Live/LiveEarcon.swift scripts/test_live_earcons.swift -o /t
 The session harness covers connection deduplication, mute/unmute, intentional end,
 unexpected server close, stale errors and tool dispatch. The simulator audio smoke
 harness also exercises connected/tool/speech/end/disconnect cues and rapid reconnect.
+
+## Connection recovery and diagnostics
+
+A transport receive/send failure, startup timeout, stalled outbound queue, server
+`connection_lost`/`expired`, or retryable service error now enters **Reconnecting**.
+Attempts back off for 1, 2, 4, 8 and 12 seconds (each handshake has a 20-second timeout).
+The budget resets only after 30 seconds of stable connection, preventing an endless
+connect/drop loop. End cancels timers, socket callbacks and retries immediately.
+Authentication, certificate/policy failures and safety termination do not auto-retry.
+A rejected command in an established session does not by itself end the call.
+
+WebSocket pings run every 15 seconds. Received events or a successful pong establish
+liveness; one failed ping is diagnostic only. With no liveness for 45 seconds, the
+connection is replaced. Audio is not buffered/replayed across connections. Capture
+stays active during short recoveries to preserve background execution, but samples
+are discarded until the replacement session is ready. The UI asks the user to repeat
+anything missed. Local playback overflow clears stale output without closing Live.
+
+The same local conversation, transcript rows, microphone mute choice, backend request
+and artifact ownership survive recovery. A new socket has its own generation so late
+send/receive/pong callbacks cannot affect the replacement. Pending tool execution is
+not resubmitted. Results that finish offline are retained and sent as commentary with
+`delegation_id: null`; old server delegation IDs are never reused on a new session.
+The new session receives recent saved context and an instruction not to repeat actions.
+This is context restoration, not a lossless server-session resume: unheard audio and
+history outside the existing 6 KB startup context budget cannot be recovered.
+
+Diagnostic metadata is available in Agent Activity and the bounded
+`LiveConnectionDiagnostics` UserDefaults ring (40 entries). It records time, failure
+stage, allowlisted NSError domain/code, HTTP status, socket close code, queue depth and
+retry count. It excludes raw errors, server messages, credentials, audio and transcripts.
+Previous builds discarded the underlying receive/decode/playback error, so historical
+instances of “check your connection” cannot be attributed to ping or packet loss from
+that message alone.
+
+Tests inject a socket receive error through the production receiver and exercise the
+real retry timer; verify restored context/mute, single-ping tolerance, stale callbacks,
+retry exhaustion, stable reset, nonretryable auth/TLS, End cancellation, send backlog,
+and tool completion while offline without replay. The native audio smoke test also
+forces output overflow and verifies capture survives output reset and rapid reconnect.
+
+Protocol basis: https://developers.openai.com/api/docs/guides/live-conversations#recover-from-a-failed-connection

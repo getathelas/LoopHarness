@@ -52,12 +52,15 @@ final class ToolCallGuard {
 final class LiveAudio {
  var onInput: ((Data, Float) -> Void)?
  var onOutputLevel: ((Float) -> Void)?
+ var onPlaybackRecovery: (() -> Void)?
  var isRunning = true
  func playCue(_ cue: LiveEarcon) { cues.append(cue) }
  func playTerminalCue(_ cue: LiveEarcon) { cues.append(cue) }
  var cues: [LiveEarcon] = []
  func start() throws {}
- func play(_ data: Data) throws {}
+ var playError: Error?
+ func play(_ data: Data) throws { if let playError { throw playError } }
+ func resetOutput() {}
  func stop() {}
 }
 
@@ -108,6 +111,7 @@ extension LiveSession {
   LiveSession.testPDFRouting()
   LiveSession.testSlowWork()
   try LiveSession.testEarcons()
+  try LiveSession.testConnectionRecovery()
  }
 }
 
@@ -363,7 +367,7 @@ extension LiveSession {
   try session.receive(["type": "session.closed"], token: session.generation)
   precondition(session.audio.cues == [.connected, .muted, .unmuted, .ended])
   session.state = .connected
-  try session.receive(["type": "session.closed"], token: session.generation)
+  try session.receive(["type": "session.closed", "reason": "content"], token: session.generation)
   precondition(session.state == .failed && session.audio.cues.last == .disconnected)
   let count = session.audio.cues.count
   session.fail("late error")
@@ -374,5 +378,149 @@ extension LiveSession {
   precondition(session.audio.cues.last == .tool)
   session.finish()
   print("PASS: connected once, mute/unmute, intentional end, unexpected close, stale error and tool earcons")
+ }
+}
+
+final class FaultSocket: LiveConnection {
+ var closeCode = 0
+ var httpStatus: Int? = 101
+ var messages: [Data] = []
+ var pending: CheckedContinuation<Data, Error>?
+ var sent: [[String: Any]] = []
+ var cancelled = false
+ var pingReply: ((Error?) -> Void)?
+ var sendError: Error?
+ func receive() async throws -> Data {
+  if cancelled { throw URLError(.cancelled) }
+  if !messages.isEmpty { return messages.removeFirst() }
+  return try await withCheckedThrowingContinuation { pending = $0 }
+ }
+ func emit(_ event: [String: Any]) {
+  let data = try! JSONSerialization.data(withJSONObject: event)
+  if let pending { self.pending = nil; pending.resume(returning: data) }
+  else { messages.append(data) }
+ }
+ func breakConnection() {
+  let callback = pending; pending = nil
+  callback?.resume(throwing: URLError(.networkConnectionLost))
+ }
+ func send(_ text: String) async throws {
+  if let sendError { throw sendError }
+  sent.append(try JSONSerialization.jsonObject(with: Data(text.utf8)) as! [String: Any])
+ }
+ func ping(completion: @escaping (Error?) -> Void) { pingReply = completion }
+ func cancel() { cancelled = true; breakConnection() }
+}
+
+extension LiveSession {
+ static func testConnectionRecovery() throws {
+  func pump(_ seconds: Double = 0.04) { RunLoop.main.run(until: Date().addingTimeInterval(seconds)) }
+  let session = LiveSession()
+  var sockets: [FaultSocket] = []
+  session.makeConnection = { _ in
+   let socket = FaultSocket(); socket.emit(["type": "session.started"])
+   sockets.append(socket); return socket
+  }
+  session.state = .connecting; session.conversation = SimpleConversation()
+  session.initialHistory = [("user", "Remember the meeting")]
+  session.connect(key: "test")
+  pump()
+  precondition(session.state == .connected && sockets.count == 1)
+  let first = sockets[0]
+  first.emit(["type": "session.input_transcript.delta", "delta": "Make a document"])
+  pump()
+  session.toggleMute()
+  let rows = session.liveMessages.map(\.id), generation = session.generation
+  session.checkHeartbeat()
+  first.pingReply?(URLError(.timedOut)); pump()
+  precondition(session.state == .connected) // One failed ping does not end a call.
+  first.breakConnection(); pump()
+  precondition(session.state == .reconnecting && session.isActive && session.retryCount == 1)
+  precondition(session.liveMessages.map(\.id) == rows && session.generation == generation && session.muted)
+  precondition(!session.persisted && session.audio.cues.last != .disconnected)
+  pump(1.1) // Exercise the real retry timer and new transport, not just the policy.
+  precondition(session.state == .connected && sockets.count == 2 && session.muted)
+  let second = sockets[1]
+  let config = second.sent.first!["session"] as! [String: Any]
+  let encoded = String(data: try JSONSerialization.data(withJSONObject: config), encoding: .utf8)!
+  precondition(encoded.contains("Remember the meeting") && encoded.contains("Make a document"))
+  precondition(!second.sent.contains { $0["type"] as? String == "session.input_audio.append" })
+  let liveTime = session.lastLiveness
+  first.pingReply?(nil); pump()
+  precondition(session.lastLiveness == liveTime) // Ignore a stale pong from the old socket.
+
+  let badEvent = second.pending; second.pending = nil
+  badEvent?.resume(returning: Data("not JSON".utf8)); pump()
+  precondition(session.state == .connected && session.connectionDiagnostic.contains("invalid-event"))
+  session.audio.playError = NSError(domain: "LiveAudio", code: 2)
+  second.emit(["type": "session.output_audio.delta", "delta": "AA=="]); pump()
+  precondition(session.state == .connected && session.connectionDiagnostic.contains("playback"))
+  session.audio.playError = nil
+  second.emit(["type": "error", "error": ["type": "invalid_request_error", "code": "immutable_field_update", "message": "SECRET"]])
+  pump(); precondition(session.state == .connected && !session.connectionDiagnostic.contains("SECRET"))
+  session.lastLiveness = Date().addingTimeInterval(-46)
+  session.checkHeartbeat()
+  precondition(session.state == .reconnecting && session.connectionDiagnostic.contains("heartbeat-timeout"))
+  session.stop(); pump(1.1)
+  precondition(session.state == .idle && sockets.count == 2 && session.persisted)
+  precondition(session.liveMessages.map(\.id) == rows)
+
+  let exhausted = LiveSession(); exhausted.state = .connected
+  for expected in 1...5 {
+   exhausted.recoverConnection()
+   precondition(exhausted.state == .reconnecting && exhausted.retryCount == expected)
+   exhausted.reconnectTask?.cancel()
+  }
+  exhausted.recoverConnection()
+  precondition(exhausted.state == .failed && exhausted.status.contains("five retries"))
+  let stable = LiveSession(); stable.state = .connected; stable.retryCount = 5
+  stable.connectedAt = Date().addingTimeInterval(-31); stable.recoverConnection()
+  precondition(stable.state == .reconnecting && stable.retryCount == 1)
+  stable.stop()
+
+  let auth = LiveSession(); auth.state = .connecting
+  let rejected = FaultSocket(); rejected.httpStatus = 401; auth.socket = rejected
+  auth.connectionFailed(URLError(.badServerResponse), stage: "receive")
+  precondition(auth.state == .failed && auth.retryCount == 0)
+  precondition(!LiveRecovery.retryable(error: URLError(.serverCertificateUntrusted), httpStatus: nil, closeCode: 0))
+  precondition(LiveRecovery.retryable(error: URLError(.badServerResponse), httpStatus: 503, closeCode: 0))
+  precondition(!LiveRecovery.retryable(error: URLError(.unknown), httpStatus: 101, closeCode: 1008))
+
+  let workSession = LiveSession(); workSession.state = .connected; workSession.conversation = SimpleConversation()
+  let work = UUID(); workSession.workID = work; workSession.delegations = ["old-delegation"]
+  workSession.currentDelegations = ["old-delegation"]
+  var card = MessageStruct(id: work.uuidString, role: "assistant", content: "Working")
+  card.liveActivity = LiveActivityRecord(); workSession.liveMessages = [card]
+  workSession.execute([FunctionCallStruct(name: "write_once", callId: "only-once")], index: 0,
+     delegation: "old-delegation", work: work, remaining: 2, transcriptCount: 0)
+  workSession.recoverConnection(); workSession.reconnectTask?.cancel()
+  pump(0.15) // Tool callback completes while voice is reconnecting.
+  precondition(workSession.liveMessages[0].liveActivity?.tools.count == 1)
+  precondition(workSession.liveMessages[0].liveActivity?.tools[0].output == "test result")
+  precondition(workSession.liveMessages[0].liveActivity?.state == "complete")
+  precondition(workSession.deferredResults.count == 1 && workSession.workID == nil)
+  precondition(workSession.status.contains("Reconnecting"))
+  let restored = FaultSocket()
+  workSession.makeConnection = { _ in restored }
+  workSession.connect(key: "test"); restored.emit(["type": "session.started"]); pump()
+  let results = restored.sent.filter { $0["type"] as? String == "session.commentary.append" }
+  precondition(!results.isEmpty && results.allSatisfy { $0["delegation_id"] is NSNull })
+  precondition(workSession.liveMessages[0].liveActivity?.tools.count == 1 && workSession.deferredResults.isEmpty)
+  workSession.stop(); workSession.connectionFailed(URLError(.networkConnectionLost), stage: "receive")
+  precondition(workSession.state == .idle) // Normal close losing its socket is still normal close.
+
+  let sender = LiveSession(); sender.state = .connecting
+  let brokenSend = FaultSocket(); brokenSend.sendError = URLError(.networkConnectionLost)
+  sender.makeConnection = { _ in brokenSend }
+  sender.connect(key: "test"); pump()
+  precondition(sender.state == .reconnecting && sender.connectionDiagnostic.contains("send"))
+  sender.stop()
+
+  let backlog = LiveSession(); backlog.state = .connected; backlog.socket = FaultSocket()
+  backlog.outgoing = Array(repeating: "queued", count: 100)
+  backlog.send(["type": "session.input_audio.append", "audio": "AA=="])
+  precondition(backlog.state == .reconnecting && backlog.outgoing.isEmpty)
+  backlog.stop()
+  print("PASS: actual receive failure/retry, context+mute preservation, missed/stale pongs, bounded retries, auth, tool completion without replay, End cancellation and backlog recovery")
  }
 }

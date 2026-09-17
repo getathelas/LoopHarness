@@ -26,7 +26,7 @@ enum LiveProtocol {
         ]]
     }
 
-    static func commentary(_ content: String, delegationID: String) -> [[String: Any]] {
+    static func commentary(_ content: String, delegationID: String?) -> [[String: Any]] {
         // Each append is limited to 500 tokens. 450 UTF-8 bytes is a conservative
         // upper bound even for non-English text; split only at Character boundaries.
         var chunks: [String] = [], chunk = ""
@@ -38,7 +38,7 @@ enum LiveProtocol {
             chunk += next
         }
         if !chunk.isEmpty { chunks.append(chunk) }
-        return chunks.map { ["type": "session.commentary.append", "delegation_id": delegationID,
+        return chunks.map { ["type": "session.commentary.append", "delegation_id": delegationID as Any? ?? NSNull(),
                              "content": $0, "event_id": UUID().uuidString] }
     }
 }

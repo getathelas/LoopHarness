@@ -28,6 +28,13 @@ final class SmokeDelegate: UIResponder, UIApplicationDelegate {
    music!.numberOfLoops = -1; music!.volume = 0.05
    precondition(music!.play())
    audio.playCue(.connected)
+   var playbackRecoveries = 0
+   audio.onPlaybackRecovery = { playbackRecoveries += 1 }
+   try audio.play(Data(repeating: 0, count: 24000 * 2 * 2))
+   try audio.play(Data(repeating: 0, count: 24000 * 2 * 2))
+   precondition(playbackRecoveries == 1 && audio.isRunning)
+   audio.resetOutput()
+   precondition(audio.isRunning)
    try audio.play(Data(repeating: 0, count: 4800))
    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
     self.audio.playCue(.tool)
@@ -48,7 +55,7 @@ final class SmokeDelegate: UIResponder, UIApplicationDelegate {
       self.audio.stop(); self.audio.playTerminalCue(.ended)
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
        precondition(!self.audio.isRunning)
-       print("PASS: earcons coexist with capture; terminal cleanup cannot interrupt reconnect")
+       print("PASS: playback overflow catches up locally; network recovery preserves capture; earcons coexist; terminal cleanup cannot interrupt reconnect")
        exit(0)
       }
      }

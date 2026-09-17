@@ -15,6 +15,8 @@ final class LiveAudio {
     private var speechAnnounced = false
     private var lastToolCue = Date.distantPast
     private var queuedFrames = 0
+    private var playbackGeneration = UUID()
+    var onPlaybackRecovery: (() -> Void)?
     private let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 24000,
                                        channels: 1, interleaved: false)!
     var isRunning: Bool { engine?.isRunning == true }
@@ -95,10 +97,17 @@ final class LiveAudio {
     func play(_ data: Data) throws {
         guard data.count % 2 == 0, !data.isEmpty, let player = player else { return }
         let count = data.count / 2
-        // End a stalled session instead of allowing seconds of stale speech to build up.
-        guard queuedFrames + count <= 24000 * 3 else {
-            throw NSError(domain: "LiveAudio", code: 2, userInfo: [NSLocalizedDescriptionKey: "Audio playback fell behind. Please reconnect."])
+        // A playback stall is local, not a failed network connection. Catch up
+        // to fresh audio instead of ending the conversation or growing latency.
+        if queuedFrames + count > 24000 * 3 {
+            playbackGeneration = UUID()
+            player.stop(); queuedFrames = 0
+            speechReset?.cancel(); speechAnnounced = false
+            player.play()
+            onPlaybackRecovery?()
         }
+        guard count <= 24000 * 3 else { return }
+        let playbackToken = playbackGeneration
         guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(count)),
               let samples = buffer.floatChannelData?[0] else { return }
         buffer.frameLength = AVAudioFrameCount(count)
@@ -119,7 +128,7 @@ final class LiveAudio {
         onOutputLevel?(min(1, sqrt(energy / Float(count)) * 6))
         player.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
             DispatchQueue.main.async {
-                guard let self = self, self.player === player else { return }
+                guard let self = self, self.player === player, self.playbackGeneration == playbackToken else { return }
                 self.queuedFrames -= count
                 if self.queuedFrames == 0 {
                     self.onOutputLevel?(0)
@@ -130,6 +139,17 @@ final class LiveAudio {
                 }
             }
         }
+    }
+
+    /// Keep capture/session alive during a short network recovery, including
+    /// in the background. LiveSession drops mic samples until a socket is ready.
+    func resetOutput() {
+        playbackGeneration = UUID()
+        speechReset?.cancel(); speechReset = nil; speechAnnounced = false
+        player?.stop(); queuedFrames = 0
+        cuePlayer?.stop()
+        if isRunning { player?.play(); cuePlayer?.play() }
+        onOutputLevel?(0)
     }
 
     func playCue(_ cue: LiveEarcon) {
@@ -182,6 +202,7 @@ final class LiveAudio {
     }
 
     func stop() {
+        playbackGeneration = UUID()
         speechReset?.cancel(); speechReset = nil; speechAnnounced = false
         cuePlayer?.stop(); cuePlayer = nil
         if let engine = engine {
