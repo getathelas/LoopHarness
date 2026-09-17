@@ -76,7 +76,7 @@ final class LiveSession: ObservableObject {
                 #elseif os(macOS)
                 if name == .AVAudioEngineConfigurationChange && self.audio.isRunning { return }
                 #endif
-                self.stop()
+                self.fail("Live audio was interrupted. Reconnect to continue.")
             })
         }
     }
@@ -144,7 +144,12 @@ final class LiveSession: ObservableObject {
     private func receive(_ event: [String: Any], token: UUID) throws {
         if let id = event["event_id"] as? String, !seenEvents.insert(id).inserted { return }
         let type = event["type"] as? String ?? ""
-        if type == "session.closed" { finalUsage = event["usage"] as? [String: Any]; finish(); return }
+        if type == "session.closed" {
+            finalUsage = event["usage"] as? [String: Any]
+            if state == .closing { finish() }
+            else { fail("Live chat disconnected. Reconnect to continue.") }
+            return
+        }
         if type == "error" {
             // Never expose arbitrary server text that might echo request context or credentials.
             fail("GPT Live rejected the request. Check your API key and model access, then reconnect."); return
@@ -164,6 +169,7 @@ final class LiveSession: ObservableObject {
             audio.onOutputLevel = { [weak self] level in self?.outputLevel = level }
             do { try audio.start() } catch { fail("Could not start live audio: \(error.localizedDescription)"); return }
             state = .connected; status = "Listening"
+            audio.playCue(.connected)
         case "session.output_audio.delta":
             if let value = event["delta"] as? String, let bytes = Data(base64Encoded: value) { try audio.play(bytes) }
         case "session.input_transcript.delta", "session.output_transcript.delta":
@@ -219,6 +225,7 @@ final class LiveSession: ObservableObject {
     func toggleMute() {
         guard state == .connected else { return }
         muted.toggle(); inputLevel = 0
+        audio.playCue(muted ? .muted : .unmuted)
         // Local zeroing is immediate; no server acknowledgment is needed for this UI state.
     }
 
@@ -227,6 +234,7 @@ final class LiveSession: ObservableObject {
         let wasConnected = state == .connected
         state = .closing; status = "Ending…"
         audio.stop(); inputLevel = 0; outputLevel = 0
+        audio.playTerminalCue(.ended)
         workID = nil; workTimeout?.cancel(); thinking = false; delegations = []
         persistTranscript()
         outgoing = []
@@ -242,7 +250,9 @@ final class LiveSession: ObservableObject {
     }
 
     private func fail(_ message: String) {
+        let shouldAnnounce = isActive
         finish(); state = .failed; status = message
+        if shouldAnnounce { audio.playTerminalCue(.disconnected) }
     }
 
     private func finish() {
@@ -369,6 +379,7 @@ final class LiveSession: ObservableObject {
         }
         let startingRecord = liveMessages.first { $0.id == work.uuidString }
         AgentActivityLog.shared.log(.toolCall, call.name)
+        audio.playCue(.tool)
         SkillDispatcher.shared.dispatch(call) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self = self else { return }

@@ -28,7 +28,7 @@ xcrun swiftc LoopIOS/Live/LiveProtocol.swift scripts/test_live_protocol.swift -o
 A local Mac audio smoke test is also available (requires existing microphone permission and discards all captured samples):
 
 ```sh
-xcrun swiftc LoopIOS/Live/LiveAudio.swift LoopMac/MicrophoneManager.swift scripts/test_live_audio.swift -o /tmp/test-live-audio
+xcrun swiftc LoopIOS/Live/LiveEarcon.swift LoopIOS/Live/LiveAudio.swift LoopMac/MicrophoneManager.swift scripts/test_live_audio.swift -o /tmp/test-live-audio
 /tmp/test-live-audio
 ```
 
@@ -51,7 +51,7 @@ The test concatenates an extension after the real session implementation to exer
 
 ```sh
 cat LoopIOS/Live/LiveSession.swift scripts/test_live_session.swift > /tmp/live-session-tests.swift
-xcrun swiftc LoopIOS/Live/LiveProtocol.swift /tmp/live-session-tests.swift -o /tmp/live-session-tests
+xcrun swiftc LoopIOS/Live/LiveEarcon.swift LoopIOS/Live/LiveProtocol.swift /tmp/live-session-tests.swift -o /tmp/live-session-tests
 /tmp/live-session-tests
 ```
 
@@ -94,3 +94,28 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer python3 scripts/test_li
 ```
 
 This test plays a quiet generated tone with AVAudioPlayer alongside the real LiveAudio engine, checks capture continues, and pauses/resumes the tone. Microphone samples are discarded. It validates local audio coexistence, not Apple Music subscription playback or a real GPT Live conversation. Hardware check: start Live, request music, ask a follow-up over the music, pause/resume music, and end Live while music is playing. Confirm the call stays connected, speech is audible, explicit playback controls work, and music continues after End.
+
+## Live earcons
+
+Live plays locally synthesized, softly enveloped cues: an ascending fifth on connection,
+its descending counterpart on End, a lower two-note alert on unexpected disconnect,
+a 55 ms high note before speech, and a double tap when dispatching a tool. Microphone
+mute/unmute have descending/ascending tones too. Tool bursts are limited to one cue
+per 800 ms. Speech is announced once until playback has drained and stayed quiet for
+800 ms, avoiding a chime on every streamed chunk. Cues use the system media volume.
+
+Active cues share the voice-processing mixer so capture and music continue. End/error
+cues use a temporary output-only engine after the microphone stops. Reconnecting
+cancels its cleanup before starting capture. System interruptions can prohibit audio,
+so the visual failure status remains available even when a disconnect cue cannot play.
+
+Validation:
+
+```sh
+xcrun swiftc LoopIOS/Live/LiveEarcon.swift scripts/test_live_earcons.swift -o /tmp/test-live-earcons
+/tmp/test-live-earcons
+```
+
+The session harness covers connection deduplication, mute/unmute, intentional end,
+unexpected server close, stale errors and tool dispatch. The simulator audio smoke
+harness also exercises connected/tool/speech/end/disconnect cues and rapid reconnect.

@@ -53,6 +53,9 @@ final class LiveAudio {
  var onInput: ((Data, Float) -> Void)?
  var onOutputLevel: ((Float) -> Void)?
  var isRunning = true
+ func playCue(_ cue: LiveEarcon) { cues.append(cue) }
+ func playTerminalCue(_ cue: LiveEarcon) { cues.append(cue) }
+ var cues: [LiveEarcon] = []
  func start() throws {}
  func play(_ data: Data) throws {}
  func stop() {}
@@ -104,6 +107,7 @@ extension LiveSession {
   try LiveSession.testGalleryRouting()
   LiveSession.testPDFRouting()
   LiveSession.testSlowWork()
+  try LiveSession.testEarcons()
  }
 }
 
@@ -343,5 +347,32 @@ extension LiveSession {
   session.reportSlowWork(work: work, delegation: "slow")
   precondition(session.status == "Listening")
   print("PASS: slow work keeps call and request alive, no replay, completion and stale timer handling")
+ }
+}
+
+extension LiveSession {
+ static func testEarcons() throws {
+  let session = LiveSession()
+  session.state = .connecting
+  try session.receive(["type": "session.started"], token: session.generation)
+  try session.receive(["type": "session.started"], token: session.generation)
+  precondition(session.audio.cues == [.connected])
+  session.toggleMute(); session.toggleMute()
+  precondition(session.audio.cues == [.connected, .muted, .unmuted])
+  session.stop(); session.stop()
+  try session.receive(["type": "session.closed"], token: session.generation)
+  precondition(session.audio.cues == [.connected, .muted, .unmuted, .ended])
+  session.state = .connected
+  try session.receive(["type": "session.closed"], token: session.generation)
+  precondition(session.state == .failed && session.audio.cues.last == .disconnected)
+  let count = session.audio.cues.count
+  session.fail("late error")
+  precondition(session.audio.cues.count == count)
+  let work = UUID(); session.state = .connected; session.workID = work
+  session.execute([FunctionCallStruct(name: "test", callId: "cue-test")], index: 0,
+                  delegation: "cue", work: work, remaining: 1, transcriptCount: session.fragments.count)
+  precondition(session.audio.cues.last == .tool)
+  session.finish()
+  print("PASS: connected once, mute/unmute, intentional end, unexpected close, stale error and tool earcons")
  }
 }

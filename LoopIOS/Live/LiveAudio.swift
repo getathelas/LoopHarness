@@ -7,6 +7,13 @@ import MusicKit
 final class LiveAudio {
     private var engine: AVAudioEngine?
     private var player: AVAudioPlayerNode?
+    private var cuePlayer: AVAudioPlayerNode?
+    private var terminalEngine: AVAudioEngine?
+    private var terminalPlayer: AVAudioPlayerNode?
+    private var terminalCleanup: DispatchWorkItem?
+    private var speechReset: DispatchWorkItem?
+    private var speechAnnounced = false
+    private var lastToolCue = Date.distantPast
     private var queuedFrames = 0
     private let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 24000,
                                        channels: 1, interleaved: false)!
@@ -15,6 +22,9 @@ final class LiveAudio {
     var onOutputLevel: ((Float) -> Void)?
 
     func start() throws {
+        stopTerminalCue()
+        speechAnnounced = false
+        lastToolCue = .distantPast
         #if os(iOS)
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.defaultToSpeaker, .allowBluetoothHFP, .mixWithOthers])
@@ -49,6 +59,10 @@ final class LiveAudio {
         self.player = player
         engine.attach(player)
         engine.connect(player, to: engine.mainMixerNode, format: format)
+        let cuePlayer = AVAudioPlayerNode()
+        self.cuePlayer = cuePlayer
+        engine.attach(cuePlayer)
+        engine.connect(cuePlayer, to: engine.mainMixerNode, format: format)
         // Do not let the player's 24 kHz wire format become the I/O format.
         // The mixer resamples it to the capture format before VoiceProcessingIO.
         // Otherwise macOS fails initialization with kAudioUnitErr_FailedInitialization
@@ -74,6 +88,7 @@ final class LiveAudio {
         engine.prepare()
         try engine.start()
         player.play()
+        cuePlayer.play()
     }
 
     /// Called on main; completion measures actual playback, not transcript timing.
@@ -94,24 +109,88 @@ final class LiveAudio {
                 samples[i] = value; energy += value * value
             }
         }
+        speechReset?.cancel()
+        if !speechAnnounced {
+            speechAnnounced = true
+            // Queue before speech so the short cue is not masked by the voice.
+            player.scheduleBuffer(LiveEarcon.speaking.buffer(format: format))
+        }
         queuedFrames += count
         onOutputLevel?(min(1, sqrt(energy / Float(count)) * 6))
         player.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
             DispatchQueue.main.async {
                 guard let self = self, self.player === player else { return }
                 self.queuedFrames -= count
-                if self.queuedFrames == 0 { self.onOutputLevel?(0) }
+                if self.queuedFrames == 0 {
+                    self.onOutputLevel?(0)
+                    let reset = DispatchWorkItem { [weak self] in self?.speechAnnounced = false }
+                    self.speechReset = reset
+                    // Chunk boundaries and short natural pauses are not new utterances.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: reset)
+                }
             }
         }
     }
 
+    func playCue(_ cue: LiveEarcon) {
+        guard isRunning, let cuePlayer else { return }
+        if cue == .tool {
+            guard Date().timeIntervalSince(lastToolCue) >= 0.8 else { return }
+            lastToolCue = Date()
+        }
+        cuePlayer.stop()
+        cuePlayer.scheduleBuffer(cue.buffer(format: format))
+        cuePlayer.play()
+    }
+
+    /// Plays after capture stops; this engine never opens the microphone.
+    func playTerminalCue(_ cue: LiveEarcon) {
+        stopTerminalCue()
+        #if os(iOS)
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
+            try session.setActive(true)
+        } catch { return } // An OS interruption may prohibit playback.
+        #endif
+        let engine = AVAudioEngine(), player = AVAudioPlayerNode()
+        terminalEngine = engine; terminalPlayer = player
+        engine.attach(player)
+        engine.connect(player, to: engine.mainMixerNode, format: format)
+        do {
+            try engine.start()
+            player.scheduleBuffer(cue.buffer(format: format))
+            player.play()
+        } catch { stopTerminalCue(); return }
+        let cleanup = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.stopTerminalCue()
+            #if os(iOS)
+            if ApplicationMusicPlayer.shared.state.playbackStatus != .playing {
+                try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            }
+            #endif
+        }
+        terminalCleanup = cleanup
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: cleanup)
+    }
+
+    private func stopTerminalCue() {
+        terminalCleanup?.cancel(); terminalCleanup = nil
+        terminalPlayer?.stop(); terminalEngine?.stop()
+        terminalPlayer = nil; terminalEngine = nil
+    }
+
     func stop() {
+        speechReset?.cancel(); speechReset = nil; speechAnnounced = false
+        cuePlayer?.stop(); cuePlayer = nil
         if let engine = engine {
             engine.inputNode.removeTap(onBus: 0)
             engine.stop()
         }
         player?.stop(); player = nil; engine = nil; queuedFrames = 0
         #if os(iOS)
+        guard terminalEngine == nil else { return }
         let session = AVAudioSession.sharedInstance()
         if ApplicationMusicPlayer.shared.state.playbackStatus == .playing {
             // Live and MusicKit share the app's audio session. Release the

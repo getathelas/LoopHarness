@@ -27,14 +27,32 @@ final class SmokeDelegate: UIResponder, UIApplicationDelegate {
    music = try AVAudioPlayer(contentsOf: url)
    music!.numberOfLoops = -1; music!.volume = 0.05
    precondition(music!.play())
+   audio.playCue(.connected)
    try audio.play(Data(repeating: 0, count: 4800))
+   DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+    self.audio.playCue(.tool)
+    self.audio.playCue(.tool)
+   }
    DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
     precondition(self.music!.isPlaying && self.audio.isRunning && self.bytes > 0)
     self.music!.pause()
     precondition(self.music!.play() && self.audio.isRunning)
     print("PASS: music playback and voice-processing capture coexist; input bytes: \(self.bytes)")
     self.music!.stop(); self.audio.stop()
-    exit(0)
+    self.audio.playTerminalCue(.disconnected)
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+     do { try self.audio.start() } catch { fatalError("Reconnect failed: \(error)") }
+     self.audio.playCue(.unmuted)
+     DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+      precondition(self.audio.isRunning && AVAudioSession.sharedInstance().category == .playAndRecord)
+      self.audio.stop(); self.audio.playTerminalCue(.ended)
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+       precondition(!self.audio.isRunning)
+       print("PASS: earcons coexist with capture; terminal cleanup cannot interrupt reconnect")
+       exit(0)
+      }
+     }
+    }
    }
   } catch { print("FAIL: \(error)"); exit(1) }
  }

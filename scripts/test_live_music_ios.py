@@ -31,7 +31,7 @@ with tempfile.TemporaryDirectory(prefix="loop-live-music-") as tmp:
     shutil.copyfile(root / "scripts/test_live_music_ios.swift", folder / "main.swift")
     sdk = subprocess.check_output(["xcrun", "--sdk", "iphonesimulator", "--show-sdk-path"], text=True).strip()
     subprocess.run(["xcrun", "swiftc", "-sdk", sdk, "-target", "arm64-apple-ios17.6-simulator",
-                    str(root / "LoopIOS/Live/LiveAudio.swift"), str(folder / "main.swift"),
+                    str(root / "LoopIOS/Live/LiveAudio.swift"), str(root / "LoopIOS/Live/LiveEarcon.swift"), str(folder / "main.swift"),
                     "-o", str(app / "MusicSmoke")], check=True)
     subprocess.run(["xcrun", "simctl", "install", device, str(app)], check=True)
     try:
