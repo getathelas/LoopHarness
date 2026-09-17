@@ -114,6 +114,13 @@
 				SpeechPipeline/EarconPlayer.swift,
 				SpeechPipeline/VoiceLoopCoordinator.swift,
 				TriggerIntent.swift,
+				VoiceAgent/LoopThreadModels.swift,
+				VoiceAgent/LoopThreadService.swift,
+				VoiceAgent/LoopThreadTools.swift,
+				VoiceAgent/LoopThreadEventBridge.swift,
+				VoiceAgent/RealtimeAudioEngine.swift,
+				VoiceAgent/RealtimeVoiceSession.swift,
+				VoiceAgent/VoiceSessionViewController.swift,
 			);
 			target = 6B00010A00000000DEADBEEF /* LoopMac */;
 		};
@@ -163,6 +170,13 @@
 				Skills/SSH/SSHTerminalTheme.swift,
 				Skills/SSH/SSHTerminalViewController.swift,
 				TriggerIntent.swift,
+				VoiceAgent/LoopThreadModels.swift,
+				VoiceAgent/LoopThreadService.swift,
+				VoiceAgent/LoopThreadTools.swift,
+				VoiceAgent/LoopThreadEventBridge.swift,
+				VoiceAgent/RealtimeAudioEngine.swift,
+				VoiceAgent/RealtimeVoiceSession.swift,
+				VoiceAgent/VoiceSessionViewController.swift,
 			);
 			target = 6C00020A00000000DEADBEEF /* LoopVision */;
 		};
