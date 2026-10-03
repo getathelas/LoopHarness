@@ -30,6 +30,22 @@ struct StartDictationIntent: AppIntent {
     }
 }
 
+/// Opens the foreground chat before acquiring microphone/audio resources.
+struct StartLiveChatIntent: AppIntent {
+    static var title: LocalizedStringResource = "Start Live Chat"
+    static var description = IntentDescription("Open Loop and start a live voice conversation.")
+    static var openAppWhenRun = true
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        LiveLaunchRequest.shared.request()
+        for scene in UIApplication.shared.connectedScenes where scene.activationState == .foregroundActive {
+            (scene.delegate as? SceneDelegate)?.handlePendingLiveLaunch()
+        }
+        return .result()
+    }
+}
+
 /// Surfaces `StartDictationIntent` as a first-class App Shortcut.
 ///
 /// Without this provider the intent only registers after the app's first
@@ -48,6 +64,17 @@ struct LoopAppShortcuts: AppShortcutsProvider {
             ],
             shortTitle: "Start Dictation",
             systemImageName: "mic.fill"
+        )
+
+        AppShortcut(
+            intent: StartLiveChatIntent(),
+            phrases: [
+                "Start live chat in \(.applicationName)",
+                "Open \(.applicationName) in live mode",
+                "Talk live with \(.applicationName)"
+            ],
+            shortTitle: "Start Live Chat",
+            systemImageName: "waveform"
         )
 
         // iOS 27+ App Intents — guarded at the shortcut level so the

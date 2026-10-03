@@ -48,6 +48,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     func sceneDidBecomeActive(_ scene: UIScene) {
+        handlePendingLiveLaunch()
         // Called when the scene has moved from an inactive state to an active state.
         // Use this method to restart any tasks that were paused (or not yet started) when the scene was inactive.
 
@@ -301,6 +302,32 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         return nil
     }
     
+    /// Restore the chat surface before consuming a Siri/Shortcuts launch.
+    /// viewDidAppear covers cold starts where the storyboard is not ready yet.
+    func handlePendingLiveLaunch() {
+        guard LiveLaunchRequest.shared.isPending(),
+              window?.windowScene?.activationState == .foregroundActive,
+              let root = window?.rootViewController else { return }
+        let navigation = root as? UINavigationController
+        guard let main = (navigation?.viewControllers.first { $0 is MainVC } as? MainVC)
+                ?? (root as? MainVC) else { return }
+        let showChat = {
+            navigation?.popToViewController(main, animated: false)
+            main.loadViewIfNeeded()
+            main.consumePendingLiveLaunch()
+        }
+        if let presented = root.presentedViewController,
+           presented.isBeingPresented || presented.isBeingDismissed {
+            // Siri can arrive during a sheet transition; UIKit ignores a
+            // competing dismiss. Retry while the short-lived request is pending.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                self?.handlePendingLiveLaunch()
+            }
+        } else if root.presentedViewController != nil {
+            root.dismiss(animated: false, completion: showChat)
+        } else { showChat() }
+    }
+
     func handleMicURL() {
         print("Handling intel://mic URL")
 
