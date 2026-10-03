@@ -161,3 +161,28 @@ and tool completion while offline without replay. The native audio smoke test al
 forces output overflow and verifies capture survives output reset and rapid reconnect.
 
 Protocol basis: https://developers.openai.com/api/docs/guides/live-conversations#recover-from-a-failed-connection
+
+## Siri and Shortcuts
+
+Use **Start Live Chat** in Loop's App Shortcuts, or say **“Siri, open Loop in
+live mode”**, **“Start live chat in Loop”**, or **“Talk live with Loop”**. It also
+works as a Shortcuts action or Action Button action. Existing Start Dictation
+continues to use the recorded-message flow.
+
+The shortcut opens Loop, returns to the chat from pushed settings or presented
+screens, and starts the same live controls as the Live button. An already-active
+call stays running. On cold launch, an in-memory request waits for the scene and
+chat view to become active; an existing dictation/voice turn can finish first.
+Requests expire after 60 seconds and are not persisted, preventing an unrelated
+later app launch from opening the microphone. Existing API-key and microphone
+permission checks still apply.
+
+Native routing regression, using a booted iOS simulator (fake session/audio;
+production intent and routing methods):
+
+```sh
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer python3 scripts/test_live_launch_ios.py SIMULATOR_UDID
+```
+
+Covers cold handoff, actual intent invocation, Settings and transitioning-sheet
+routing, repeated invocation, busy voice deferral, and one-shot/expiry behavior.

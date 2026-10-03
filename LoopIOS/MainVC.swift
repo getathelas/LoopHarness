@@ -53,6 +53,30 @@ class MainVC: MessagingVC {
     private var previousTitleView: UIView?
     private var liveBaseMessages: [MessageStruct] = []
 
+    @objc private func voiceStateAllowsLiveLaunch() {
+        consumePendingLiveLaunch()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        consumePendingLiveLaunch()
+    }
+
+    /// Share the same UI and session path as the Live button. Repeated Siri
+    /// invocations keep an active call running instead of toggling it off.
+    func consumePendingLiveLaunch() {
+        guard viewIfLoaded?.window?.windowScene?.activationState == .foregroundActive,
+              (navigationController == nil || navigationController?.topViewController == self),
+              presentedViewController == nil,
+              VoiceLoopCoordinator.shared.state == .idle,
+              LiveLaunchRequest.shared.consume() else { return }
+        if LiveSession.shared.isActive { return }
+        if liveOrbController != nil {
+            liveBaseMessages = messages
+            LiveSession.shared.start()
+        } else { startLiveChat() }
+    }
+
     private func startLiveChat() {
         guard liveOrbController == nil, !LiveSession.shared.isActive,
               VoiceLoopCoordinator.shared.state == .idle else { return }
@@ -200,6 +224,8 @@ class MainVC: MessagingVC {
     override func viewDidLoad() {
         super.viewDidLoad()
 
+        NotificationCenter.default.addObserver(self, selector: #selector(voiceStateAllowsLiveLaunch),
+            name: .voiceLoopStateDidChange, object: nil)
         messageBox.onStartLive = { [weak self] in self?.startLiveChat() }
 
         setupAvatarTitleView()
