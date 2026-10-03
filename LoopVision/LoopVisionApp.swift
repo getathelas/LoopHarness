@@ -6,7 +6,7 @@ import SwiftUI
 /// single volumetric window that lives in the visionOS **Shared Space**, so it
 /// floats in your real room (passthrough) alongside every other open app. You
 /// look at the orb and pinch-and-hold to talk — the equivalent of holding
-/// fn+control on the Mac.
+/// shift+control on the Mac.
 ///
 /// Why a volume and not an `ImmersiveSpace`: opening *any* immersive space
 /// (even a `.mixed` passthrough one) moves the wearer into the exclusive Full

@@ -510,7 +510,7 @@ private final class MacKeyInputRow: NSView {
     /// they're typing. Everything else stays in a secure field.
     private static func isSecret(_ key: KeyStore.Key) -> Bool {
         switch key {
-        case .obsidianBaseURL, .obsidianVaultName, .githubBaseURL, .devinOrgID:
+        case .obsidianBaseURL, .obsidianVaultName, .githubBaseURL, .devinOrgID, .bedrockRegion:
             return false
         default:
             return true

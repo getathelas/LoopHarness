@@ -99,6 +99,28 @@ final class AgentHarness {
     /// static bundled set; dynamic skills get appended on every refresh.
     private var staticToolSchemasCount: Int = 0
 
+    // MARK: - Persistent-state bootstrap
+    //
+    // Resolving the iCloud workspace and downloading evicted self-docs,
+    // dynamic skills, and MCP records can take minutes on a newly set-up
+    // iPhone. None of that work is required to construct the first usable
+    // chat screen, so iOS performs it on this serial utility queue. Calls to
+    // `chat` that arrive before it finishes are resumed asynchronously rather
+    // than blocking the main thread.
+    private enum PersistenceBootstrapState {
+        case notStarted
+        case loading
+        case ready
+    }
+
+    private let persistenceQueue = DispatchQueue(
+        label: "loop.agentHarness.persistence",
+        qos: .utility
+    )
+    private let persistenceStateLock = NSLock()
+    private var persistenceBootstrapState: PersistenceBootstrapState = .notStarted
+    private var persistenceReadyCallbacks: [() -> Void] = []
+
     /// Human-readable catalog of the bundled skills, surfaced by the side
     /// drawer's "Skills" tab. This intentionally mirrors the `systemPromptFragment`
     /// list assembled in `init()` below (same order) — when you add a skill
@@ -197,40 +219,14 @@ final class AgentHarness {
         self.staticToolsDocLength = toolsDoc.count
         self.staticToolSchemasCount = toolSchemas.count
 
-        // Override the templated defaults with anything the agent has
-        // persisted from prior sessions. Missing files just leave the
-        // defaults in place. Touching Workspace.shared here also bootstraps
-        // the iCloud container resolution + legacy migration.
-        _ = Workspace.shared
-        loadPersistedSelfDocs()
-
-        // Seed any bundled starter skills into the workspace on first launch.
-        // Currently there are none (BundledSkillSeeds.all is empty), so this is
-        // a no-op; kept so a starter can be reintroduced later. Subsequent
-        // launches detect existing files on disk and skip.
-        BundledSkillSeeds.seedIfNeeded()
-
-        // Seed the reference docs (ABOUT_LOOP.md — the agent's own code map)
-        // into the Workspace root on first launch. Idempotent: skipped once
-        // the file exists, so user/agent edits survive.
-        BundledDocSeeds.seedIfNeeded()
-
-        // Initial scan + refresh of dynamic-skill schemas. The registry's
-        // didReload hook keeps us in sync as skills get added/removed
-        // mid-session.
-        DynamicSkillRegistry.shared.didReload = { [weak self] in
-            self?.refreshDynamicSkills()
-        }
-        DynamicSkillRegistry.shared.reload()
-
-        // Same plumbing for remote MCP servers the user has installed. We
-        // share `refreshDynamicSkills` because both registries land in the
-        // same trailing section of `toolSchemas` / `toolsDoc`.
-        MCPRegistry.shared.didReload = { [weak self] in
-            self?.refreshDynamicSkills()
-        }
-
-        refreshDynamicSkills()
+        #if !os(iOS)
+        // The Mac launch path historically expects workspace-backed state to
+        // be ready when this singleton returns. Preserve that behavior there;
+        // iOS starts the same work asynchronously after installing its UI.
+        persistenceBootstrapState = .loading
+        performPersistenceBootstrap()
+        finishPersistenceBootstrap()
+        #endif
 
         // Resume polling any Cursor cloud agents dispatched in a prior
         // session so their PR link still posts back after a relaunch.
@@ -255,6 +251,77 @@ final class AgentHarness {
         #if canImport(HealthKit) && os(iOS)
         _ = HealthKitManager.shared
         #endif
+    }
+
+    /// Begin loading workspace-backed agent state without blocking the caller.
+    /// Safe to call repeatedly; only the first call schedules work.
+    func startPersistenceBootstrap() {
+        persistenceStateLock.lock()
+        guard persistenceBootstrapState == .notStarted else {
+            persistenceStateLock.unlock()
+            return
+        }
+        persistenceBootstrapState = .loading
+        persistenceStateLock.unlock()
+
+        let startedAt = Date()
+        print("AgentHarness: starting workspace bootstrap in background")
+        persistenceQueue.async { [weak self] in
+            guard let self = self else { return }
+            self.performPersistenceBootstrap()
+            let elapsed = Date().timeIntervalSince(startedAt)
+            print("AgentHarness: workspace bootstrap finished in \(String(format: "%.1f", elapsed))s")
+            self.finishPersistenceBootstrap()
+        }
+    }
+
+    private var isPersistenceReady: Bool {
+        persistenceStateLock.lock(); defer { persistenceStateLock.unlock() }
+        return persistenceBootstrapState == .ready
+    }
+
+    private func whenPersistenceReady(_ callback: @escaping () -> Void) {
+        persistenceStateLock.lock()
+        if persistenceBootstrapState == .ready {
+            persistenceStateLock.unlock()
+            DispatchQueue.main.async(execute: callback)
+        } else {
+            persistenceReadyCallbacks.append(callback)
+            persistenceStateLock.unlock()
+        }
+    }
+
+    /// Runs on `persistenceQueue` on iOS. This is the only launch-time path
+    /// allowed to resolve or hydrate the iCloud workspace.
+    private func performPersistenceBootstrap() {
+        _ = Workspace.shared
+        loadPersistedSelfDocs()
+
+        BundledSkillSeeds.seedIfNeeded()
+        BundledDocSeeds.seedIfNeeded()
+
+        DynamicSkillRegistry.shared.didReload = { [weak self] in
+            self?.refreshDynamicSkills()
+        }
+        DynamicSkillRegistry.shared.reload()
+
+        MCPRegistry.shared.didReload = { [weak self] in
+            self?.refreshDynamicSkills()
+        }
+
+        refreshDynamicSkills()
+    }
+
+    private func finishPersistenceBootstrap() {
+        persistenceStateLock.lock()
+        persistenceBootstrapState = .ready
+        let callbacks = persistenceReadyCallbacks
+        persistenceReadyCallbacks.removeAll()
+        persistenceStateLock.unlock()
+
+        for callback in callbacks {
+            DispatchQueue.main.async(execute: callback)
+        }
     }
 
     // MARK: - Dynamic skill integration
@@ -370,6 +437,22 @@ final class AgentHarness {
               onPartial: ((String) -> Void)? = nil,
               completion: @escaping(MessageStruct?, Error?) -> Void) {
 
+        #if os(iOS)
+        // A user can start typing immediately while a new phone is still
+        // hydrating its iCloud workspace. Keep the UI responsive and resume
+        // this request once the documents and registries are ready.
+        startPersistenceBootstrap()
+        guard isPersistenceReady else {
+            whenPersistenceReady { [weak self] in
+                self?.chat(messages: messages,
+                           tools: tools,
+                           onPartial: onPartial,
+                           completion: completion)
+            }
+            return
+        }
+        #endif
+
         // Slash commands short-circuit before any inference call. The latest
         // user message is the trigger; if it starts with a recognized
         // /<command>, SlashCommands.handle returns a deterministic reply and
@@ -463,10 +546,14 @@ final class AgentHarness {
         switch routeProvider {
         case .anthropic:
             AnthropicChat.shared.chat(messages: rebuilt, tools: toolsToSend, modelIDOverride: modelIDOverride, modelStampOverride: modelStampOverride, onPartial: onPartial, completion: completion)
+        case .bedrock:
+            BedrockChat.shared.chat(messages: rebuilt, tools: toolsToSend, modelIDOverride: modelIDOverride, modelStampOverride: modelStampOverride, onPartial: onPartial, completion: completion)
         case .openAI:
             OpenAIChat.shared.chat(messages: rebuilt, tools: toolsToSend, modelIDOverride: modelIDOverride, modelStampOverride: modelStampOverride, onPartial: onPartial, completion: completion)
         case .fireworks:
             FireworksChat.shared.chat(messages: rebuilt, tools: toolsToSend, modelIDOverride: modelIDOverride, modelStampOverride: modelStampOverride, onPartial: onPartial, completion: completion)
+        case .deepInfra:
+            DeepInfraChat.shared.chat(messages: rebuilt, tools: toolsToSend, modelIDOverride: modelIDOverride, modelStampOverride: modelStampOverride, onPartial: onPartial, completion: completion)
         case .apple:
             // Unreachable — `.apple` returned via offlineRespond above. Kept
             // so the switch stays exhaustive if providers are added.
@@ -596,6 +683,20 @@ final class AgentHarness {
     /// or edit them externally) without having to wait for a tool call to
     /// trigger the first persistence.
     func seedSelfDocsIfMissing() {
+        #if os(iOS)
+        // Onboarding calls this from main. Queue it behind the initial
+        // workspace bootstrap so first launch never waits on iCloud file
+        // coordination before presenting the greeting.
+        startPersistenceBootstrap()
+        persistenceQueue.async { [weak self] in
+            self?.seedSelfDocsIfMissingNow()
+        }
+        #else
+        seedSelfDocsIfMissingNow()
+        #endif
+    }
+
+    private func seedSelfDocsIfMissingNow() {
         let fm = FileManager.default
         for doc in SelfDoc.allCases {
             let url = selfDocURL(for: doc)

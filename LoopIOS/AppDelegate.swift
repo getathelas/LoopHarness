@@ -20,9 +20,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         UNUserNotificationCenter.current().delegate = self
 
         // Wire the iCloud KVS observer before any VC reads onboarding/TTS
-        // preferences. Touching KeyStore.shared additionally runs the one-shot
-        // migration that moves pre-existing non-sync Keychain entries into
-        // the synchronizable namespace so they ride iCloud Keychain.
+        // preferences. Touching KeyStore.shared starts (but does not wait for)
+        // the one-shot migration that moves pre-existing non-sync Keychain
+        // entries into the synchronizable namespace. The scan stays off the
+        // launch thread so a first TestFlight open cannot strand the user on
+        // the white launch screen while iCloud Keychain is settling.
         iCloudKVSDefaults.shared.bootstrap()
         _ = KeyStore.shared
 

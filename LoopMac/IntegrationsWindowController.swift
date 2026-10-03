@@ -170,11 +170,29 @@ fileprivate final class IntegrationsListViewController: NSViewController, NSTabl
                 handler: nil
             ),
             slackIntegration(),
+            codexIntegration(),
             devinIntegration(),
             twitterIntegration(),
         ]
 
         tableView.reloadData()
+    }
+
+    /// Local Codex app-server integration. Authentication is owned by the
+    /// Codex CLI, so this row reports whether Loop can resolve the executable;
+    /// the detail window performs a live account/read check.
+    private func codexIntegration() -> Integration {
+        let available = CodexAppServerClient.isAvailable
+        return Integration(
+            title: "Codex",
+            subtitle: available
+                ? "Installed · manage local projects and agent access"
+                : "Install Codex CLI or configure its executable path",
+            icon: "terminal",
+            tint: .systemIndigo,
+            status: available ? .connected : .notConnected,
+            handler: { _ in CodexIntegrationWindowController.shared.show() }
+        )
     }
 
     /// Devin coding agent. The v3 API needs both a cog_… API key AND an

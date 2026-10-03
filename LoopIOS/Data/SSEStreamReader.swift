@@ -7,7 +7,8 @@
 //  response and incrementally assembles content deltas and tool-call
 //  fragments into a final `MessageStruct`.
 //
-//  Used by OpenAIChat and FireworksChat (both use the same SSE wire format).
+//  Used by OpenAIChat, FireworksChat, and DeepInfraChat (all use the same
+//  SSE wire format).
 //  Anthropic uses a different event schema — see AnthropicChat for its
 //  streaming path.
 //

@@ -135,7 +135,7 @@ Tips:
                     "properties": [
                         "name": [
                             "type": "string",
-                            "description": "Key identifier. Aliases accepted: openai, deepgram, elevenlabs, exa, cursor, obsidian_api, obsidian_base_url, obsidian_vault_name."
+                            "description": "Key identifier. Aliases accepted: openai, deepinfra, deepgram, elevenlabs, exa, cursor, obsidian_api, obsidian_base_url, obsidian_vault_name."
                         ],
                         "value": [
                             "type": "string",
@@ -491,7 +491,10 @@ Tips:
         case .exa:                    return "exa"
         case .openAI:                 return "openai"
         case .anthropic:              return "anthropic"
+        case .bedrock:                return "bedrock"
+        case .bedrockRegion:          return "bedrock_region"
         case .fireworks:              return "fireworks"
+        case .deepInfra:               return "deepinfra"
         case .cursor:                 return "cursor"
         case .obsidianAPI:            return "obsidian_api"
         case .obsidianBaseURL:        return "obsidian_base_url"
@@ -527,7 +530,7 @@ Tips:
             completion(Self.functionMessage(name: toolName, payload: [
                 "error": "unknown_key",
                 "name": name,
-                "hint": "Aliases accepted: openai, deepgram, elevenlabs, exa, cursor, obsidian_api, obsidian_base_url, obsidian_vault_name."
+                "hint": "Aliases accepted: openai, deepinfra, deepgram, elevenlabs, exa, cursor, obsidian_api, obsidian_base_url, obsidian_vault_name."
             ]))
             return
         }
@@ -555,7 +558,10 @@ Tips:
         switch n {
         case "openai", "open_ai", "open ai":                  return .openAI
         case "anthropic", "claude":                           return .anthropic
+        case "bedrock", "amazon_bedrock", "amazon bedrock": return .bedrock
+        case "bedrock_region", "bedrock region", "aws_region": return .bedrockRegion
         case "fireworks":                                     return .fireworks
+        case "deepinfra", "deep_infra", "deep infra":        return .deepInfra
         case "deepgram":                                      return .deepgram
         case "elevenlabs", "eleven_labs", "eleven labs":      return .elevenLabs
         case "exa":                                           return .exa
