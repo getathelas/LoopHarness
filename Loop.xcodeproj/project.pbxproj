@@ -566,7 +566,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = LoopIOS/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Loop;
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "This app needs access to your microphone to record voice messages.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Loop uses your microphone for voice messages and live conversations.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "We use library to upload your id.";
 				INFOPLIST_KEY_NSSiriUsageDescription = "Used to start shortcut";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "This app needs access to speech recognition to transcribe your voice messages.";
@@ -607,7 +607,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = LoopIOS/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Loop;
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "This app needs access to your microphone to record voice messages.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Loop uses your microphone for voice messages and live conversations.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "We use library to upload your id.";
 				INFOPLIST_KEY_NSSiriUsageDescription = "Used to start shortcut";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "This app needs access to speech recognition to transcribe your voice messages.";
@@ -791,7 +791,7 @@
 				INFOPLIST_FILE = LoopMac/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Loop;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Loop records your voice when you hold shift + control so it can transcribe and send it to the assistant.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Loop uses your microphone for voice messages and live conversations.";
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Loop transcribes your speech so the assistant can hear what you say.";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -848,7 +848,7 @@
 				INFOPLIST_FILE = LoopMac/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Loop;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Loop records your voice when you hold shift + control so it can transcribe and send it to the assistant.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Loop uses your microphone for voice messages and live conversations.";
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Loop transcribes your speech so the assistant can hear what you say.";
 				LD_RUNPATH_SEARCH_PATHS = (

@@ -5,6 +5,8 @@
 //  Created by Ash Bhat on 12/30/25.
 //
 import UIKit
+import SwiftUI
+import Combine
 
 class MainVC: MessagingVC {
 
@@ -44,8 +46,161 @@ class MainVC: MessagingVC {
     /// can tear it down cleanly.
     private var agentLargeVC: AgentLargeVC?
 
+    private var liveOrbController: UIHostingController<LiveCompactOrb>?
+    private var liveControlsController: UIHostingController<LiveCallControls>?
+    private var liveBorderController: UIHostingController<LiveSpeakingBorder>?
+    private var liveRowsObservation: AnyCancellable?
+    private var previousTitleView: UIView?
+    private var liveBaseMessages: [MessageStruct] = []
+
+    private func startLiveChat() {
+        guard liveOrbController == nil, !LiveSession.shared.isActive,
+              VoiceLoopCoordinator.shared.state == .idle else { return }
+        stopSpeech()
+        view.endEditing(true)
+        liveBaseMessages = messages
+        previousTitleView = navigationItem.titleView
+        let orb = UIHostingController(rootView: LiveCompactOrb(session: .shared))
+        liveOrbController = orb
+        // The title view lives in UINavigationController's navigation bar.
+        let orbHost = navigationController ?? self
+        orbHost.addChild(orb)
+        orb.view.backgroundColor = .clear
+        orb.view.frame = CGRect(x: 0, y: 0, width: 44, height: 44)
+        navigationItem.titleView = orb.view
+        orb.didMove(toParent: orbHost)
+
+        let controls = UIHostingController(rootView: LiveCallControls(session: .shared, onRetry: { [weak self] in
+            guard let self else { return }
+            self.liveBaseMessages = self.messages
+            LiveSession.shared.start()
+        }, onClose: { [weak self] in
+            self?.dismissLiveChat()
+        }))
+        liveControlsController = controls
+        addChild(controls)
+        controls.view.backgroundColor = .clear
+        controls.view.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(controls.view)
+        NSLayoutConstraint.activate([
+            controls.view.leadingAnchor.constraint(equalTo: messageBox.leadingAnchor, constant: 15),
+            controls.view.trailingAnchor.constraint(equalTo: messageBox.trailingAnchor, constant: -15),
+            controls.view.topAnchor.constraint(equalTo: messageBox.topAnchor),
+            controls.view.bottomAnchor.constraint(equalTo: messageBox.safeAreaLayoutGuide.bottomAnchor)
+        ])
+        controls.didMove(toParent: self)
+        messageBox.alpha = 0
+        messageBox.setInputEnabled(false)
+        messageBox.setAttachmentEnabled(false)
+
+        if let window = view.window {
+            let border = UIHostingController(rootView: LiveSpeakingBorder(session: .shared))
+            liveBorderController = border
+            // The controller and its view must share the same hierarchy.
+            // Attaching a chat child directly to UIWindow raises UIKit's
+            // UIViewControllerHierarchyInconsistency when the call opens.
+            let host = window.rootViewController ?? self
+            host.addChild(border)
+            border.view.backgroundColor = .clear
+            border.view.isUserInteractionEnabled = false
+            border.view.translatesAutoresizingMaskIntoConstraints = false
+            host.view.addSubview(border.view)
+            NSLayoutConstraint.activate([
+                border.view.leadingAnchor.constraint(equalTo: host.view.leadingAnchor),
+                border.view.trailingAnchor.constraint(equalTo: host.view.trailingAnchor),
+                border.view.topAnchor.constraint(equalTo: host.view.topAnchor),
+                border.view.bottomAnchor.constraint(equalTo: host.view.bottomAnchor)
+            ])
+            border.didMove(toParent: host)
+        }
+        LiveSession.shared.start()
+        liveRowsObservation = LiveSession.shared.$liveMessages
+            .throttle(for: .milliseconds(150), scheduler: RunLoop.main, latest: true)
+            .sink { [weak self] rows in
+                guard let self, self.liveOrbController != nil,
+                      LiveSession.shared.conversationID == SimpleConversationManager.shared.currentConversation?.id,
+                      !rows.isEmpty else { return }
+                self.renderLiveRows(rows)
+            }
+    }
+
+    override func liveInspectionDidChange() {
+        if !isInspectingLiveActivity { renderLiveRows(LiveSession.shared.liveMessages, follow: false) }
+    }
+
+    private func renderLiveRows(_ rows: [MessageStruct], follow: Bool = true) {
+        guard liveOrbController != nil, !rows.isEmpty,
+              LiveSession.shared.conversationID == SimpleConversationManager.shared.currentConversation?.id else { return }
+        let offset = tableView.contentOffset
+        // Keep the visible message anchored while inspecting, but continue
+        // accepting results: freezing the data also hid in-flight images.
+        let previousRows = visible_messages
+        let inspecting = isInspectingLiveActivity
+        let anchorIndex = tableView.indexPathsForVisibleRows?.sorted().first
+        let anchorID = anchorIndex.flatMap { $0.row < visible_messages.count ? visible_messages[$0.row].id : nil }
+        let anchorY = anchorIndex.map { tableView.rectForRow(at: $0).minY - offset.y }
+        let nearBottom = offset.y + tableView.bounds.height >= tableView.contentSize.height - 120
+        UIView.performWithoutAnimation {
+            messages = liveBaseMessages + rows
+            let currentRows = visible_messages
+            if previousRows.map(\.id) == currentRows.map(\.id),
+               tableView.numberOfRows(inSection: 0) >= currentRows.count {
+                // Speech deltas must not recreate unrelated image cards.
+                let changed = currentRows.indices.filter {
+                    previousRows[$0].content != currentRows[$0].content ||
+                    previousRows[$0].model != currentRows[$0].model ||
+                    previousRows[$0].liveActivity != currentRows[$0].liveActivity ||
+                    previousRows[$0].pdfAttachment?.status != currentRows[$0].pdfAttachment?.status ||
+                    previousRows[$0].pdfAttachment?.fileURL != currentRows[$0].pdfAttachment?.fileURL
+                }.map { IndexPath(row: $0, section: 0) }
+                if !changed.isEmpty { tableView.reconfigureRows(at: changed) }
+            } else { tableView.reloadData() }
+            refreshAvatarVisibility(animated: false)
+            tableView.layoutIfNeeded()
+            if follow && !inspecting && nearBottom && !tableView.isDragging && !tableView.isDecelerating && !visible_messages.isEmpty {
+                tableView.scrollToRow(at: IndexPath(row: visible_messages.count - 1, section: 0), at: .bottom, animated: false)
+            } else if let anchorID, let anchorY,
+                      let row = visible_messages.firstIndex(where: { $0.id == anchorID }) {
+                let y = tableView.rectForRow(at: IndexPath(row: row, section: 0)).minY - anchorY
+                tableView.setContentOffset(CGPoint(x: offset.x, y: y), animated: false)
+            } else { tableView.setContentOffset(offset, animated: false) }
+        }
+    }
+
+    private func dismissLiveChat() {
+        LiveSession.shared.stop()
+        liveRowsObservation = nil
+        navigationItem.titleView = previousTitleView
+        let controllers: [UIViewController?] = [liveOrbController, liveControlsController, liveBorderController]
+        for controller in controllers.compactMap({ $0 }) {
+            controller.willMove(toParent: nil)
+            controller.view.removeFromSuperview()
+            controller.removeFromParent()
+        }
+        liveOrbController = nil; liveControlsController = nil; liveBorderController = nil
+        previousTitleView = nil; liveBaseMessages = []
+        messageBox.alpha = 1
+        messageBox.setInputEnabled(true)
+        messageBox.setAttachmentEnabled(true)
+        if let conversation = SimpleConversationManager.shared.currentConversation {
+            loadConversation(conversation)
+        }
+        refreshAvatarVisibility(animated: false)
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        // Presenting another screen or backgrounding does not end a live call.
+        // Keep its controls attached so they are available when we return.
+        if liveOrbController != nil && (isBeingDismissed || isMovingFromParent) {
+            dismissLiveChat()
+        }
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
+
+        messageBox.onStartLive = { [weak self] in self?.startLiveChat() }
 
         setupAvatarTitleView()
         setupHeroAvatar()

@@ -62,7 +62,7 @@ final class PDFGenerationService: NSObject {
                                        status: .generating,
                                        conversationId: conversationId)
         DispatchQueue.main.async { [weak self] in
-            self?.host?.pdfSkillDidStartGenerating(attachment)
+            if !LiveSession.shared.receiveLivePDF(attachment) { self?.host?.pdfSkillDidStartGenerating(attachment) }
             self?.startRender(attachment: attachment)
         }
         return attachment
@@ -125,7 +125,7 @@ final class PDFGenerationService: NSObject {
         switch outcome {
         case .success(let final):
             DispatchQueue.main.async { [weak self] in
-                self?.host?.pdfSkillDidFinishGenerating(final)
+                if !LiveSession.shared.receiveLivePDF(final) { self?.host?.pdfSkillDidFinishGenerating(final) }
             }
         case .failure(let attachment, let reason):
             deliverFailure(reason, attachment: attachment)
@@ -144,7 +144,7 @@ final class PDFGenerationService: NSObject {
                                    failureReason: message,
                                    conversationId: attachment.conversationId)
         DispatchQueue.main.async { [weak self] in
-            self?.host?.pdfSkillDidFinishGenerating(failed)
+            if !LiveSession.shared.receiveLivePDF(failed) { self?.host?.pdfSkillDidFinishGenerating(failed) }
         }
     }
 

@@ -85,7 +85,7 @@ final class ImageGenerationService {
         // didFinishGenerating with status .failed, so the placeholder
         // doesn't hang.
         DispatchQueue.main.async { [weak self] in
-            self?.host?.imageSkillDidStartGenerating(attachment)
+            if !LiveSession.shared.receiveLiveImage(attachment) { self?.host?.imageSkillDidStartGenerating(attachment) }
         }
 
         startNetworkRequest(attachment: attachment, size: size)
@@ -217,7 +217,7 @@ final class ImageGenerationService {
                                             status: .ready,
                                             conversationId: attachment.conversationId)
                 DispatchQueue.main.async { [weak self] in
-                    self?.host?.imageSkillDidFinishGenerating(ready)
+                    if !LiveSession.shared.receiveLiveImage(ready) { self?.host?.imageSkillDidFinishGenerating(ready) }
                 }
             } catch {
                 self.deliverFailure(message: "Failed to save image: \(error.localizedDescription)",
@@ -237,7 +237,7 @@ final class ImageGenerationService {
                                      failureReason: message,
                                      conversationId: attachment.conversationId)
         DispatchQueue.main.async { [weak self] in
-            self?.host?.imageSkillDidFinishGenerating(failed)
+            if !LiveSession.shared.receiveLiveImage(failed) { self?.host?.imageSkillDidFinishGenerating(failed) }
         }
     }
 
