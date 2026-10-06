@@ -28,8 +28,8 @@ html, body {
     padding: 0;
 }
 
-/* WKWebView's createPDF ignores @page margins; body padding is
-   the only reliable content inset on iOS-rendered PDFs. */
+/* Screen-preview insets. PDFPageLayout removes these in print media;
+   the native print pipeline supplies margins on every page. */
 body {
     padding: 0.5in 0.65in 0.7in 0.65in;
 }

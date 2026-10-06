@@ -29,10 +29,8 @@ html, body {
     -webkit-font-smoothing: subpixel-antialiased;
 }
 
-/* WKWebView's createPDF ignores `@page` margins — Apple's renderer does
-   pagination but doesn't honor the print box. Body padding is the only
-   margin source we can rely on, so the page rule above stays in case a
-   future iOS picks it up but the visual margin is enforced here. */
+/* Screen-preview insets. PDFPageLayout removes these in print media;
+   the native print pipeline supplies margins on every page. */
 body {
     padding: 0.9in 1.0in 1.0in 1.0in;
 }

@@ -29,7 +29,7 @@ protocol PDFSkillHost: AnyObject {
 }
 
 /// Generates clean, page-aware PDFs from GFM markdown. The render pipeline
-/// is fully local (offscreen WKWebView → createPDF → PDFKit thumbnail) so
+/// is fully local (offscreen WKWebView → native printing → PDFKit thumbnail) so
 /// the skill has no API keys, rate limits, or offline failure mode.
 ///
 /// Iteration ("make it shorter", "add a budget section") is chat-mediated:
